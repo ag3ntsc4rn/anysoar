@@ -41,6 +41,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Kill switch: `GuardedDriver(kill_switch=KillSwitch(path))` denies every operation, reads
   included, while the switch is engaged in process (`engage()`) or the file at `path` exists.
   It is checked when each call arrives and again after approval.
+- `anysoar.mcp`: `create_server(guarded_driver)` builds an MCP server (MCP Python SDK 2.3,
+  `anysoar[mcp]`) with one tool per capability the driver reports, plus `describe_soar`.
+  Tools take agent-friendly arguments (verdict and status names, ISO 8601 times) and return
+  OCSF JSON. With `ElicitationApprover`, the user approves write actions in their MCP client
+  (form elicitation, on both the 2026-07-28 and earlier protocols); the policy layer still
+  decides, audits and checks the kill switch. Policy denials and SOAR errors are returned as
+  readable tool errors.
+- `GuardedDriver.action(capability, **arguments)` previews the `Action` a call would produce.
 
 ### Changed
 

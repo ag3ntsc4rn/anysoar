@@ -256,3 +256,29 @@ class TestGuardedDriver:
         soar = GuardedDriver(MockDriver())
         page: Page[DetectionFinding] = await soar.list_alerts(AlertQuery(limit=2))
         assert len(page.items) == 2
+
+
+async def test_action_preview_matches_the_call() -> None:
+    approver = RecordingApprover()
+    soar = GuardedDriver(MockDriver(), approver=approver)
+    note = Note(comment="x")
+
+    preview = await soar.action(Capability.ADD_NOTE, case_uid="case-0002", note=note)
+    await soar.add_note("case-0002", note)
+    assert approver.actions[-1] == preview
+
+    preview = await soar.action(
+        Capability.CLOSE_CASE, case_uid="case-0002", verdict_id=VerdictId.BENIGN
+    )
+    await soar.close_case("case-0002", verdict_id=VerdictId.BENIGN)
+    assert approver.actions[-1] == preview
+
+    preview = await soar.action(
+        Capability.RUN_PLAYBOOK, playbook_uid="pb-notify-reporter", case_uid="case-0001"
+    )
+    await soar.run_playbook("pb-notify-reporter", case_uid="case-0001")
+    assert approver.actions[-1] == preview
+
+    assert (await soar.action(Capability.GET_ALERT, alert_uid="a")).summary == "Get alert a"
+    with pytest.raises(NotFoundError):
+        await soar.action(Capability.RUN_PLAYBOOK, playbook_uid="pb-nope")

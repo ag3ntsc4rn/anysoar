@@ -7,6 +7,7 @@ import logging
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Mapping
+from typing import Any
 
 from pydantic import JsonValue
 
@@ -111,47 +112,49 @@ class GuardedDriver(Driver):
             if self.audit_log is not None:
                 await self.audit_log.aclose()
 
+    async def action(self, capability: Capability, /, **arguments: Any) -> Action:
+        """The :class:`Action` a call would produce, without running or recording it.
+
+        ``arguments`` are the keyword arguments of the corresponding :class:`Driver` method.
+        Lets a caller (e.g. the MCP server) show a human exactly what will be judged, and ask
+        the policy about it, before making the call. For ``run_playbook`` this looks up the
+        playbook, so it can raise :class:`~anysoar.errors.NotFoundError`.
+        """
+        if capability is Capability.RUN_PLAYBOOK:
+            return await self._run_playbook_action(**arguments)
+        return _ACTION_BUILDERS[capability](**arguments)
+
     # -- Alerts ---------------------------------------------------------------------------
 
     async def list_alerts(self, query: AlertQuery | None = None) -> Page[DetectionFinding]:
-        arguments = (query or AlertQuery()).model_dump(mode="json", exclude_defaults=True)
-        action = self._action(Capability.LIST_ALERTS, "List alerts", arguments)
-        return await self._guarded(action, lambda: self.driver.list_alerts(query))
+        return await self._guarded(
+            _list_alerts_action(query), lambda: self.driver.list_alerts(query)
+        )
 
     async def get_alert(self, alert_uid: str) -> DetectionFinding:
-        action = self._action(
-            Capability.GET_ALERT, f"Get alert {alert_uid}", {"alert_uid": alert_uid}
+        return await self._guarded(
+            _get_alert_action(alert_uid), lambda: self.driver.get_alert(alert_uid)
         )
-        return await self._guarded(action, lambda: self.driver.get_alert(alert_uid))
 
     # -- Cases ----------------------------------------------------------------------------
 
     async def get_case(self, case_uid: str) -> IncidentFinding:
-        action = self._action(Capability.GET_CASE, f"Get case {case_uid}", {"case_uid": case_uid})
-        return await self._guarded(action, lambda: self.driver.get_case(case_uid))
+        return await self._guarded(
+            _get_case_action(case_uid), lambda: self.driver.get_case(case_uid)
+        )
 
     async def add_note(self, case_uid: str, note: Note) -> Note:
-        action = self._action(
-            Capability.ADD_NOTE,
-            f"Add a note to case {case_uid}: {note.comment!r}",
-            {"case_uid": case_uid, "note": note.to_ocsf()},
-        )
         return await self._guarded(
-            action, lambda: self.driver.add_note(case_uid, note), lambda n: n.uid
+            _add_note_action(case_uid, note),
+            lambda: self.driver.add_note(case_uid, note),
+            lambda n: n.uid,
         )
 
     async def close_case(
         self, case_uid: str, *, verdict_id: VerdictId, comment: str | None = None
     ) -> IncidentFinding:
-        verdict = verdict_id.name.lower()
-        summary = f"Close case {case_uid} as {verdict}" + (f": {comment!r}" if comment else "")
-        action = self._action(
-            Capability.CLOSE_CASE,
-            summary,
-            {"case_uid": case_uid, "verdict": verdict, "comment": comment},
-        )
         return await self._guarded(
-            action,
+            _close_case_action(case_uid, verdict_id=verdict_id, comment=comment),
             lambda: self.driver.close_case(case_uid, verdict_id=verdict_id, comment=comment),
             lambda _: case_uid,
         )
@@ -159,18 +162,14 @@ class GuardedDriver(Driver):
     # -- Indicators -----------------------------------------------------------------------
 
     async def enrich_indicator(self, indicator: Observable) -> IndicatorEnrichment:
-        action = self._action(
-            Capability.ENRICH_INDICATOR,
-            f"Enrich {indicator.type_id.name.lower()} {indicator.value}",
-            {"indicator": indicator.to_ocsf()},
+        return await self._guarded(
+            _enrich_indicator_action(indicator), lambda: self.driver.enrich_indicator(indicator)
         )
-        return await self._guarded(action, lambda: self.driver.enrich_indicator(indicator))
 
     # -- Playbooks ------------------------------------------------------------------------
 
     async def list_playbooks(self) -> list[Playbook]:
-        action = self._action(Capability.LIST_PLAYBOOKS, "List playbooks")
-        return await self._guarded(action, self.driver.list_playbooks)
+        return await self._guarded(_list_playbooks_action(), self.driver.list_playbooks)
 
     async def run_playbook(
         self,
@@ -180,22 +179,8 @@ class GuardedDriver(Driver):
         alert_uid: str | None = None,
         inputs: Mapping[str, JsonValue] | None = None,
     ) -> PlaybookRun:
-        self._require_supported(Capability.RUN_PLAYBOOK)
-        playbook = await self._find_playbook(playbook_uid)
-        name = f"{playbook.name!r} ({playbook_uid})" if playbook else playbook_uid
-        target = " on " + " and ".join(
-            f"{kind} {uid}" for kind, uid in (("case", case_uid), ("alert", alert_uid)) if uid
-        )
-        action = Action(
-            capability=Capability.RUN_PLAYBOOK,
-            tier=playbook.tier if playbook else ActionTier.DESTRUCTIVE,
-            summary=_clip(f"Run playbook {name}" + (target if case_uid or alert_uid else "")),
-            arguments={
-                "playbook_uid": playbook_uid,
-                "case_uid": case_uid,
-                "alert_uid": alert_uid,
-                "inputs": dict(inputs or {}),
-            },
+        action = await self._run_playbook_action(
+            playbook_uid, case_uid=case_uid, alert_uid=alert_uid, inputs=inputs
         )
         return await self._guarded(
             action,
@@ -206,21 +191,38 @@ class GuardedDriver(Driver):
         )
 
     async def get_playbook_run(self, run_uid: str) -> PlaybookRun:
-        action = self._action(
-            Capability.GET_PLAYBOOK_RUN, f"Get playbook run {run_uid}", {"run_uid": run_uid}
+        return await self._guarded(
+            _get_playbook_run_action(run_uid), lambda: self.driver.get_playbook_run(run_uid)
         )
-        return await self._guarded(action, lambda: self.driver.get_playbook_run(run_uid))
 
     # -- Policy ---------------------------------------------------------------------------
 
-    def _action(
-        self, capability: Capability, summary: str, arguments: dict[str, JsonValue] | None = None
+    async def _run_playbook_action(
+        self,
+        playbook_uid: str,
+        *,
+        case_uid: str | None = None,
+        alert_uid: str | None = None,
+        inputs: Mapping[str, JsonValue] | None = None,
     ) -> Action:
+        self._require_supported(Capability.RUN_PLAYBOOK)
+        playbook = await self._find_playbook(playbook_uid)
+        name = f"{playbook.name!r} ({playbook_uid})" if playbook else playbook_uid
+        targets = [
+            f"{kind} {uid}" for kind, uid in (("case", case_uid), ("alert", alert_uid)) if uid
+        ]
         return Action(
-            capability=capability,
-            tier=capability.tier,
-            summary=_clip(summary),
-            arguments=arguments or {},
+            capability=Capability.RUN_PLAYBOOK,
+            tier=playbook.tier if playbook else ActionTier.DESTRUCTIVE,
+            summary=_clip(
+                f"Run playbook {name}" + (" on " + " and ".join(targets) if targets else "")
+            ),
+            arguments={
+                "playbook_uid": playbook_uid,
+                "case_uid": case_uid,
+                "alert_uid": alert_uid,
+                "inputs": dict(inputs or {}),
+            },
         )
 
     def _require_supported(self, capability: Capability) -> None:
@@ -357,3 +359,75 @@ class GuardedDriver(Driver):
 
 def _elapsed_ms(started: float) -> int:
     return round((time.monotonic() - started) * 1000)
+
+
+def _action(
+    capability: Capability, summary: str, arguments: dict[str, JsonValue] | None = None
+) -> Action:
+    return Action(
+        capability=capability,
+        tier=capability.tier,
+        summary=_clip(summary),
+        arguments=arguments or {},
+    )
+
+
+def _list_alerts_action(query: AlertQuery | None = None) -> Action:
+    arguments = (query or AlertQuery()).model_dump(mode="json", exclude_defaults=True)
+    return _action(Capability.LIST_ALERTS, "List alerts", arguments)
+
+
+def _get_alert_action(alert_uid: str) -> Action:
+    return _action(Capability.GET_ALERT, f"Get alert {alert_uid}", {"alert_uid": alert_uid})
+
+
+def _get_case_action(case_uid: str) -> Action:
+    return _action(Capability.GET_CASE, f"Get case {case_uid}", {"case_uid": case_uid})
+
+
+def _add_note_action(case_uid: str, note: Note) -> Action:
+    return _action(
+        Capability.ADD_NOTE,
+        f"Add a note to case {case_uid}: {note.comment!r}",
+        {"case_uid": case_uid, "note": note.to_ocsf()},
+    )
+
+
+def _close_case_action(
+    case_uid: str, *, verdict_id: VerdictId, comment: str | None = None
+) -> Action:
+    verdict = verdict_id.name.lower()
+    summary = f"Close case {case_uid} as {verdict}" + (f": {comment!r}" if comment else "")
+    return _action(
+        Capability.CLOSE_CASE,
+        summary,
+        {"case_uid": case_uid, "verdict": verdict, "comment": comment},
+    )
+
+
+def _enrich_indicator_action(indicator: Observable) -> Action:
+    return _action(
+        Capability.ENRICH_INDICATOR,
+        f"Enrich {indicator.type_id.name.lower()} {indicator.value}",
+        {"indicator": indicator.to_ocsf()},
+    )
+
+
+def _list_playbooks_action() -> Action:
+    return _action(Capability.LIST_PLAYBOOKS, "List playbooks")
+
+
+def _get_playbook_run_action(run_uid: str) -> Action:
+    return _action(Capability.GET_PLAYBOOK_RUN, f"Get playbook run {run_uid}", {"run_uid": run_uid})
+
+
+_ACTION_BUILDERS: dict[Capability, Callable[..., Action]] = {
+    Capability.LIST_ALERTS: _list_alerts_action,
+    Capability.GET_ALERT: _get_alert_action,
+    Capability.GET_CASE: _get_case_action,
+    Capability.ADD_NOTE: _add_note_action,
+    Capability.CLOSE_CASE: _close_case_action,
+    Capability.ENRICH_INDICATOR: _enrich_indicator_action,
+    Capability.LIST_PLAYBOOKS: _list_playbooks_action,
+    Capability.GET_PLAYBOOK_RUN: _get_playbook_run_action,
+}
