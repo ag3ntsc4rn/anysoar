@@ -49,6 +49,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   decides, audits and checks the kill switch. Policy denials and SOAR errors are returned as
   readable tool errors.
 - `GuardedDriver.action(capability, **arguments)` previews the `Action` a call would produce.
+- `anysoar-mcp` command (also `python -m anysoar.mcp`): runs the MCP server over stdio with
+  `--driver` (currently `mock`), `--policy` (TOML; unlisted tiers keep their defaults),
+  `--audit-log` and `--kill-switch`, each also settable with an `ANYSOAR_*` environment
+  variable. The audit log and kill switch are on by default, under
+  `$XDG_STATE_HOME/anysoar/` (`~/.local/state/anysoar/`).
 
 ### Changed
 
