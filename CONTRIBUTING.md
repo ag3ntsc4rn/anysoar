@@ -77,7 +77,8 @@ All operations are `async`. Each corresponds to a `Capability`, and its tier is 
    subset of `implemented_capabilities()`, never a superset.
 2. **Speak OCSF.** Map native fields to the models in `anysoar.models`. Put native values
    that have no OCSF home in `unmapped` and keep the model valid. Never add fields to the
-   models for one vendor. Alert uids are `finding_info.uid`.
+   models for one vendor. Alert uids are `finding_info.uid`; case uids are `metadata.uid`,
+   because an OCSF Incident Finding has no uid of its own.
 3. **Use the error types.** Raise `NotFoundError` for missing objects and `DriverError` for
    SOAR or network failures (set `retryable=True` for timeouts and rate limits). Don't let
    vendor SDK or HTTP exceptions escape.

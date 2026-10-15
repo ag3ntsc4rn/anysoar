@@ -20,6 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   destructive) per capability, and `Playbook`, `PlaybookRun`, `Page`, `AlertQuery`,
   `IndicatorEnrichment` and `DriverInfo`.
 - `anysoar.errors`: `CapabilityNotSupportedError`, `NotFoundError`, `DriverError`.
+- `anysoar.drivers.mock`: `MockDriver`, an in-memory fake SOAR implementing every capability.
+  It is seeded with a synthetic phishing scenario (8 alerts, 3 cases, 5 playbooks), gives
+  deterministic enrichment, and advances playbook runs from queued to running to succeeded
+  (or failed) one step per poll.
+
+### Changed
+
+- A case's uid is its `metadata.uid`, since an OCSF Incident Finding has no uid of its own.
 
 ## [0.0.1] - 2026-10-15
 

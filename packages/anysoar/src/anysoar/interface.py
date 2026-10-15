@@ -224,7 +224,7 @@ class Driver:
     # -- Cases ----------------------------------------------------------------------------
 
     async def get_case(self, case_uid: str) -> IncidentFinding:
-        """Fetch one case by its uid."""
+        """Fetch one case by its uid, which is the case's ``metadata.uid``."""
         raise self._unsupported(Capability.GET_CASE)
 
     async def add_note(self, case_uid: str, note: Note) -> Note:
