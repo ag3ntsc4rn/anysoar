@@ -149,6 +149,7 @@ async def test_demo_over_stdio(tmp_path: Path) -> None:
         if json.loads(line)["kind"] == "approval"
     ]
     assert [a["capability"] for a in approvals] == ["add_note", "run_playbook", "close_case"]
+    assert {a["actor"] for a in approvals} == {"mcp:anysoar-agent"}
 
 
 def test_demo_provider_only_knows_its_case() -> None:

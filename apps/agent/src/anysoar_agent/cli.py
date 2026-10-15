@@ -13,7 +13,7 @@ from typing import Any, TextIO
 from mcp import Client, StdioServerParameters
 from mcp.client import ClientRequestContext
 from mcp.server.mcpserver import MCPServer
-from mcp.types import ElicitRequestParams, ElicitResult
+from mcp.types import ElicitRequestParams, ElicitResult, Implementation
 
 from anysoar_agent.agent import Agent, AgentEvent, AgentResult
 from anysoar_agent.model import Model
@@ -87,7 +87,12 @@ async def run_triage(
     on_event: Callable[[AgentEvent], Any] | None = None,
 ) -> AgentResult:
     """Connect to the MCP server and let the agent triage ``case_uid``."""
-    async with Client(server, elicitation_callback=_elicitation_callback(approver)) as client:
+    async with Client(
+        server,
+        elicitation_callback=_elicitation_callback(approver),
+        # Names the agent in the server's audit log (actor "mcp:anysoar-agent").
+        client_info=Implementation(name="anysoar-agent", version="0.0.0"),
+    ) as client:
         agent = Agent(
             model, McpToolbox(client), system=SYSTEM_PROMPT, max_turns=max_turns, on_event=on_event
         )
