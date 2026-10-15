@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tests that check the models against a committed OCSF schema snapshot
   (`scripts/update_ocsf_snapshot.py` refreshes it).
 - Core now depends on `pydantic>=2.14,<3`.
+- `anysoar.interface`: the async driver contract. `Driver` base class, `Capability` discovery
+  (a driver's capabilities are the operations it overrides), `ActionTier` (read, write,
+  destructive) per capability, and `Playbook`, `PlaybookRun`, `Page`, `AlertQuery`,
+  `IndicatorEnrichment` and `DriverInfo`.
+- `anysoar.errors`: `CapabilityNotSupportedError`, `NotFoundError`, `DriverError`.
 
 ## [0.0.1] - 2026-10-15
 
