@@ -41,6 +41,9 @@ capabilities) are anysoar's own models in `anysoar.interface`, kept deliberately
 - **Serialization is OCSF JSON:** enums as integers, timestamps as milliseconds since the
   epoch, unset attributes and empty arrays omitted. `type_uid` is derived as
   `class_uid * 100 + activity_id` and checked when parsing.
+- **Identity.** An alert's uid is `finding_info.uid`. OCSF gives an Incident Finding no uid
+  of its own (it has `finding_info_list`, not `finding_info`), so a case's uid is
+  `metadata.uid`, the uid of the case record.
 - **Profiles are declared.** Detection Finding attributes that come from OCSF's `incident`
   profile (`assignee`, `assignee_group`, `priority_id`, `verdict_id`, `src_url`) add `incident`
   to `metadata.profiles` when set.
