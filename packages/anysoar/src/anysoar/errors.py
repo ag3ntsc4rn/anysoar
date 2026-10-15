@@ -65,6 +65,8 @@ class DenialReason(StrEnum):
     """The operation needs approval but there is no way to ask for it."""
     KILL_SWITCH = "kill_switch"
     """The kill switch is engaged; no operations run."""
+    AUDIT_UNAVAILABLE = "audit_unavailable"
+    """The action could not be written to the audit log, so it was not run."""
 
 
 class PolicyDeniedError(AnysoarError):
