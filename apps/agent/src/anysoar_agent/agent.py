@@ -95,7 +95,8 @@ class Agent:
             try:
                 result = await self.toolbox.call(call)
             except Exception as exc:
-                result = ToolResult(call.id, f"{type(exc).__name__}: {exc}", is_error=True)
+                cause = _innermost(exc)
+                result = ToolResult(call.id, f"{type(cause).__name__}: {cause}", is_error=True)
         await self._emit(AgentEvent("tool_result", call=call, result=result))
         return result
 
@@ -120,3 +121,10 @@ class Agent:
             outcome = self.on_event(event)
             if inspect.isawaitable(outcome):
                 await outcome
+
+
+def _innermost(exc: BaseException) -> BaseException:
+    """The first leaf of an exception group (task groups wrap the real error)."""
+    while isinstance(exc, BaseExceptionGroup) and exc.exceptions:
+        exc = exc.exceptions[0]
+    return exc

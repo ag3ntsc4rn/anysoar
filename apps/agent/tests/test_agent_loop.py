@@ -39,12 +39,18 @@ class FakeToolbox:
         self.called: list[ToolCall] = []
 
     async def tools(self) -> list[ToolSpec]:
-        return [ToolSpec("echo", "Echo", {"type": "object"}), ToolSpec("boom", "Fails", {})]
+        return [
+            ToolSpec("echo", "Echo", {"type": "object"}),
+            ToolSpec("boom", "Fails", {}),
+            ToolSpec("group", "Fails inside a task group", {}),
+        ]
 
     async def call(self, call: ToolCall) -> ToolResult:
         self.called.append(call)
         if call.name == "boom":
             raise RuntimeError("tool crashed")
+        if call.name == "group":
+            raise ExceptionGroup("unhandled errors in a TaskGroup", [EOFError("stdin closed")])
         return ToolResult(call.id, json.dumps(call.arguments))
 
 
@@ -73,13 +79,14 @@ class TestLoop:
         assert [r.content for r in results.results] == ['{"x": 1}', '{"x": 2}']
 
     async def test_tool_errors_go_back_to_the_model(self) -> None:
-        model = ScriptedModel([calls(("boom", {}), ("nope", {})), done("handled")])
+        model = ScriptedModel([calls(("boom", {}), ("nope", {}), ("group", {})), done("handled")])
         result = await Agent(model, FakeToolbox(), system="").run("x")
         results = result.transcript[2]
         assert isinstance(results, ToolResults)
         assert [(r.is_error, r.content) for r in results.results] == [
             (True, "RuntimeError: tool crashed"),
             (True, "unknown tool 'nope'"),
+            (True, "EOFError: stdin closed"),
         ]
         assert result.stop == "end"
 
