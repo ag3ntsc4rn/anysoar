@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from anysoar.interface import Capability
 
-__all__ = ["AnysoarError", "CapabilityNotSupportedError", "DriverError", "NotFoundError"]
+__all__ = [
+    "AnysoarError",
+    "CapabilityNotSupportedError",
+    "DenialReason",
+    "DriverError",
+    "NotFoundError",
+    "PolicyDeniedError",
+]
 
 
 class AnysoarError(Exception):
@@ -42,3 +50,28 @@ class DriverError(AnysoarError):
     def __init__(self, message: str, *, retryable: bool = False) -> None:
         self.retryable = retryable
         super().__init__(message)
+
+
+class DenialReason(StrEnum):
+    """Why the policy layer refused an operation."""
+
+    POLICY = "policy"
+    """The policy denies this operation outright."""
+    APPROVAL_REJECTED = "approval_rejected"
+    """A human (or the configured approver) rejected the operation."""
+    APPROVAL_TIMEOUT = "approval_timeout"
+    """No approval decision arrived in time."""
+    APPROVAL_UNAVAILABLE = "approval_unavailable"
+    """The operation needs approval but there is no way to ask for it."""
+    KILL_SWITCH = "kill_switch"
+    """The kill switch is engaged; no operations run."""
+
+
+class PolicyDeniedError(AnysoarError):
+    """The policy layer refused to run an operation. The SOAR was not called."""
+
+    def __init__(self, capability: Capability, reason: DenialReason, detail: str) -> None:
+        self.capability = capability
+        self.reason = reason
+        self.detail = detail
+        super().__init__(f"{capability.value} denied ({reason.value}): {detail}")
