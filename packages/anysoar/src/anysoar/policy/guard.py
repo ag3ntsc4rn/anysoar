@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import time
+import uuid
 from collections.abc import Awaitable, Callable, Mapping
 
 from pydantic import JsonValue
@@ -25,10 +28,13 @@ from anysoar.interface import (
     PlaybookRun,
 )
 from anysoar.models import DetectionFinding, IncidentFinding, Note, Observable, VerdictId
-from anysoar.policy.approval import ApprovalUnavailableError, Approver
+from anysoar.policy.approval import Approval, ApprovalUnavailableError, Approver
+from anysoar.policy.audit import AuditEvent, AuditEventKind, AuditLog
 from anysoar.policy.rules import Action, Decision, Policy
 
 __all__ = ["GuardedDriver"]
+
+logger = logging.getLogger(__name__)
 
 _SUMMARY_LIMIT = 200
 
@@ -60,6 +66,9 @@ class GuardedDriver(Driver):
             denied.
         approval_timeout: Seconds to wait for an approval before denying; ``None`` waits
             forever.
+        audit_log: Receives an :class:`~anysoar.policy.AuditEvent` for every step of every
+            call. If an action cannot be recorded before it runs, it is denied. Closing the
+            guard closes the log.
     """
 
     name = "guarded"
@@ -71,8 +80,10 @@ class GuardedDriver(Driver):
         policy: Policy | None = None,
         approver: Approver | None = None,
         approval_timeout: float | None = 300.0,
+        audit_log: AuditLog | None = None,
     ) -> None:
         self.driver = driver
+        self.audit_log = audit_log
         self.policy = policy or Policy()
         self.approver = approver
         self.approval_timeout = approval_timeout
@@ -89,7 +100,11 @@ class GuardedDriver(Driver):
         return info.model_copy(update={"capabilities": allowed})
 
     async def aclose(self) -> None:
-        await self.driver.aclose()
+        try:
+            await self.driver.aclose()
+        finally:
+            if self.audit_log is not None:
+                await self.audit_log.aclose()
 
     # -- Alerts ---------------------------------------------------------------------------
 
@@ -116,7 +131,9 @@ class GuardedDriver(Driver):
             f"Add a note to case {case_uid}: {note.comment!r}",
             {"case_uid": case_uid, "note": note.to_ocsf()},
         )
-        return await self._guarded(action, lambda: self.driver.add_note(case_uid, note))
+        return await self._guarded(
+            action, lambda: self.driver.add_note(case_uid, note), lambda n: n.uid
+        )
 
     async def close_case(
         self, case_uid: str, *, verdict_id: VerdictId, comment: str | None = None
@@ -131,6 +148,7 @@ class GuardedDriver(Driver):
         return await self._guarded(
             action,
             lambda: self.driver.close_case(case_uid, verdict_id=verdict_id, comment=comment),
+            lambda _: case_uid,
         )
 
     # -- Indicators -----------------------------------------------------------------------
@@ -179,6 +197,7 @@ class GuardedDriver(Driver):
             lambda: self.driver.run_playbook(
                 playbook_uid, case_uid=case_uid, alert_uid=alert_uid, inputs=inputs
             ),
+            lambda run: run.uid,
         )
 
     async def get_playbook_run(self, run_uid: str) -> PlaybookRun:
@@ -212,20 +231,73 @@ class GuardedDriver(Driver):
                 return playbook
         raise NotFoundError("playbook", playbook_uid)
 
-    async def _guarded[T](self, action: Action, call: Callable[[], Awaitable[T]]) -> T:
+    async def _guarded[T](
+        self,
+        action: Action,
+        call: Callable[[], Awaitable[T]],
+        result_ref: Callable[[T], str | None] | None = None,
+    ) -> T:
         self._require_supported(action.capability)
         decision = self.policy.decide(action)
-        if decision is Decision.DENY:
+        call_uid = uuid.uuid4().hex
+
+        def event(kind: AuditEventKind, **fields: object) -> AuditEvent:
+            return AuditEvent.for_action(
+                action, call_uid=call_uid, driver=self.driver.name, kind=kind, **fields
+            )
+
+        try:
+            await self._record(
+                event(AuditEventKind.REQUESTED, decision=decision, arguments=action.arguments)
+            )
+        except Exception as exc:
             raise PolicyDeniedError(
                 action.capability,
-                DenialReason.POLICY,
-                f"{action.tier.value} action denied by policy",
+                DenialReason.AUDIT_UNAVAILABLE,
+                f"could not write the audit log: {exc}",
+            ) from exc
+        try:
+            if decision is Decision.DENY:
+                raise PolicyDeniedError(
+                    action.capability,
+                    DenialReason.POLICY,
+                    f"{action.tier.value} action denied by policy",
+                )
+            if decision is Decision.REQUIRE_APPROVAL:
+                await self._approve(
+                    action, lambda a: self._record(event(AuditEventKind.APPROVAL, approval=a))
+                )
+        except PolicyDeniedError as denied:
+            await self._record_quietly(
+                event(AuditEventKind.DENIED, reason=denied.reason, detail=denied.detail)
             )
-        if decision is Decision.REQUIRE_APPROVAL:
-            await self._approve(action)
-        return await call()
+            raise
 
-    async def _approve(self, action: Action) -> None:
+        started = time.monotonic()
+        try:
+            result = await call()
+        except Exception as exc:
+            await self._record_quietly(
+                event(
+                    AuditEventKind.FAILED,
+                    error_type=type(exc).__name__,
+                    detail=str(exc),
+                    duration_ms=_elapsed_ms(started),
+                )
+            )
+            raise
+        await self._record_quietly(
+            event(
+                AuditEventKind.COMPLETED,
+                result_ref=result_ref(result) if result_ref else None,
+                duration_ms=_elapsed_ms(started),
+            )
+        )
+        return result
+
+    async def _approve(
+        self, action: Action, on_answer: Callable[[Approval], Awaitable[None]]
+    ) -> None:
         capability = action.capability
         if self.approver is None:
             raise PolicyDeniedError(
@@ -244,7 +316,32 @@ class GuardedDriver(Driver):
             raise PolicyDeniedError(
                 capability, DenialReason.APPROVAL_UNAVAILABLE, str(exc)
             ) from exc
+        try:
+            await on_answer(approval)
+        except Exception as exc:
+            raise PolicyDeniedError(
+                capability,
+                DenialReason.AUDIT_UNAVAILABLE,
+                f"could not write the audit log: {exc}",
+            ) from exc
         if not approval.approved:
             who = f" by {approval.approver}" if approval.approver else ""
             detail = f"rejected{who}" + (f": {approval.reason}" if approval.reason else "")
             raise PolicyDeniedError(capability, DenialReason.APPROVAL_REJECTED, detail)
+
+    async def _record(self, event: AuditEvent) -> None:
+        if self.audit_log is not None:
+            await self.audit_log.record(event)
+
+    async def _record_quietly(self, event: AuditEvent) -> None:
+        """Record an event that must not change the call's outcome if it cannot be written."""
+        try:
+            await self._record(event)
+        except Exception:
+            logger.exception(
+                "could not write %s audit event for call %s", event.kind, event.call_uid
+            )
+
+
+def _elapsed_ms(started: float) -> int:
+    return round((time.monotonic() - started) * 1000)

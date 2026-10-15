@@ -34,6 +34,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   capability or per playbook. Approvals time out, and a playbook whose risk is unknown is
   treated as destructive.
 - `anysoar.errors`: `PolicyDeniedError` with a `DenialReason`.
+- Audit log: `GuardedDriver(audit_log=...)` records every step of every call (requested with
+  the decision, approval, then completed, denied or failed) as `AuditEvent`s sharing a
+  `call_uid`. `JsonlAuditLog` appends to a user-only JSONL file; `MemoryAuditLog` keeps events
+  in memory. An action that cannot be recorded is not run.
 
 ### Changed
 
