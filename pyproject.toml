@@ -8,6 +8,7 @@ members = ["packages/*"]
 
 [dependency-groups]
 dev = [
+    "mcp>=2.3", # the anysoar[mcp] extra, so the MCP server is type checked and tested
     "mypy>=2.4",
     "pre-commit>=4.7",
     "pytest>=9.1",
