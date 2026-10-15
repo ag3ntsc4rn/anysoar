@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    # This job name is the required status check in the main branch ruleset. Keep it stable.
+    name: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true
+
+      - name: Install
+        run: uv sync --locked
+
+      - name: Lint
+        run: uv run --frozen ruff check --output-format=github
+
+      - name: Format
+        run: uv run --frozen ruff format --check
+
+      - name: Type check
+        run: uv run --frozen mypy
+
+      - name: Test
+        run: uv run --frozen pytest
+
+      - name: Build
+        run: uv build --package anysoar

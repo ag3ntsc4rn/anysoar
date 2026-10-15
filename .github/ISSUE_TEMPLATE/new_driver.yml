@@ -1,0 +1,41 @@
+name: New driver request
+description: Ask for (or offer to build) a driver for another SOAR platform.
+title: "driver: "
+labels: ["driver"]
+body:
+  - type: input
+    id: platform
+    attributes:
+      label: SOAR platform
+      placeholder: "Product name and version"
+    validations:
+      required: true
+  - type: input
+    id: api-docs
+    attributes:
+      label: Public API documentation
+      description: Link to the vendor's publicly available API docs. Drivers are built only from public documentation.
+    validations:
+      required: true
+  - type: dropdown
+    id: access
+    attributes:
+      label: How can it be tested?
+      options:
+        - Open source / self-hostable
+        - Free tier or community edition
+        - Paid only
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: operations
+    attributes:
+      label: Operations you need
+      description: e.g. list alerts, read cases, add notes, run playbooks, close cases.
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contributing
+      options:
+        - label: I'm willing to help build or test this driver.
