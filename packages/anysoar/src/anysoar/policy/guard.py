@@ -30,6 +30,7 @@ from anysoar.interface import (
 from anysoar.models import DetectionFinding, IncidentFinding, Note, Observable, VerdictId
 from anysoar.policy.approval import Approval, ApprovalUnavailableError, Approver
 from anysoar.policy.audit import AuditEvent, AuditEventKind, AuditLog
+from anysoar.policy.kill_switch import KillSwitch
 from anysoar.policy.rules import Action, Decision, Policy
 
 __all__ = ["GuardedDriver"]
@@ -69,6 +70,8 @@ class GuardedDriver(Driver):
         audit_log: Receives an :class:`~anysoar.policy.AuditEvent` for every step of every
             call. If an action cannot be recorded before it runs, it is denied. Closing the
             guard closes the log.
+        kill_switch: While engaged, every operation is denied. Checked when a call arrives
+            and again after approval.
     """
 
     name = "guarded"
@@ -81,9 +84,11 @@ class GuardedDriver(Driver):
         approver: Approver | None = None,
         approval_timeout: float | None = 300.0,
         audit_log: AuditLog | None = None,
+        kill_switch: KillSwitch | None = None,
     ) -> None:
         self.driver = driver
         self.audit_log = audit_log
+        self.kill_switch = kill_switch
         self.policy = policy or Policy()
         self.approver = approver
         self.approval_timeout = approval_timeout
@@ -257,6 +262,7 @@ class GuardedDriver(Driver):
                 f"could not write the audit log: {exc}",
             ) from exc
         try:
+            self._check_kill_switch(action)
             if decision is Decision.DENY:
                 raise PolicyDeniedError(
                     action.capability,
@@ -267,6 +273,7 @@ class GuardedDriver(Driver):
                 await self._approve(
                     action, lambda a: self._record(event(AuditEventKind.APPROVAL, approval=a))
                 )
+                self._check_kill_switch(action)
         except PolicyDeniedError as denied:
             await self._record_quietly(
                 event(AuditEventKind.DENIED, reason=denied.reason, detail=denied.detail)
@@ -328,6 +335,11 @@ class GuardedDriver(Driver):
             who = f" by {approval.approver}" if approval.approver else ""
             detail = f"rejected{who}" + (f": {approval.reason}" if approval.reason else "")
             raise PolicyDeniedError(capability, DenialReason.APPROVAL_REJECTED, detail)
+
+    def _check_kill_switch(self, action: Action) -> None:
+        reason = self.kill_switch.reason if self.kill_switch is not None else None
+        if reason is not None:
+            raise PolicyDeniedError(action.capability, DenialReason.KILL_SWITCH, reason)
 
     async def _record(self, event: AuditEvent) -> None:
         if self.audit_log is not None:
