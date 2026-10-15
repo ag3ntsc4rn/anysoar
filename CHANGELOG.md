@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `anysoar.models`: Pydantic v2 models aligned with OCSF 1.9.0. Alerts are Detection Findings,
+  cases are Incident Findings, indicators are observables; also enrichment, reputation, note,
+  user, group, metadata and product objects, and the OCSF enums they use.
+- Tests that check the models against a committed OCSF schema snapshot
+  (`scripts/update_ocsf_snapshot.py` refreshes it).
+- Core now depends on `pydantic>=2.14,<3`.
+
 ## [0.0.1] - 2026-10-15
 
 ### Added

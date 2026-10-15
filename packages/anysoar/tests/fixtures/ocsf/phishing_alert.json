@@ -1,0 +1,41 @@
+{
+  "class_uid": 2004,
+  "class_name": "Detection Finding",
+  "category_uid": 2,
+  "activity_id": 1,
+  "type_uid": 200401,
+  "severity_id": 4,
+  "status_id": 1,
+  "confidence_id": 2,
+  "is_alert": true,
+  "time": 1760540400000,
+  "message": "User reported a suspicious email with a credential-harvesting link",
+  "metadata": {
+    "version": "1.9.0",
+    "uid": "evt-0001",
+    "product": { "name": "Example SOAR", "vendor_name": "Example Vendor", "version": "1.0" },
+    "log_name": "user-reported-phishing"
+  },
+  "finding_info": {
+    "uid": "alert-0001",
+    "title": "Reported phishing: \"Your mailbox is almost full\"",
+    "desc": "Email to alice@example.com from it-support@example.net containing a login link.",
+    "types": ["Phishing"],
+    "created_time": 1760540400000
+  },
+  "observables": [
+    { "name": "email.from", "type_id": 5, "value": "it-support@example.net" },
+    { "name": "email.urls", "type_id": 6, "value": "https://login.example.net/owa/verify" },
+    { "name": "src_endpoint.ip", "type_id": 2, "value": "203.0.113.25" },
+    {
+      "name": "file.hashes",
+      "type_id": 8,
+      "value": "0000000000000000000000000000000000000000000000000000000000000001"
+    }
+  ],
+  "notes": [
+    { "comment": "Reported via the phishing button.", "created_time": 1760540401000 }
+  ],
+  "unmapped": { "example_soar.queue": "phishing" },
+  "evidences": [{ "email": { "subject": "Your mailbox is almost full" } }]
+}

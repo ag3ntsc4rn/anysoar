@@ -22,7 +22,7 @@ classifiers = [
     "Topic :: System :: Monitoring",
     "Typing :: Typed",
 ]
-dependencies = []
+dependencies = ["pydantic>=2.14,<3"]
 
 [project.optional-dependencies]
 mcp = ["mcp>=2.3"]
