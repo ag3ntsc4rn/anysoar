@@ -6,8 +6,8 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
 > **Status: pre-alpha.** The OCSF-aligned data model, the driver interface, a mock driver
-> (an in-memory fake SOAR) and a driver contract test suite exist. There is no MCP server,
-> policy layer or real SOAR driver yet. Expect breaking changes.
+> (an in-memory fake SOAR), the policy layer and the MCP server exist. There is no real SOAR
+> driver yet, so anysoar can only drive the mock. Expect breaking changes.
 
 ## The problem
 
@@ -51,14 +51,59 @@ flowchart LR
 pip install anysoar
 ```
 
-The `0.0.x` releases contain only the package skeleton. Planned optional extras:
+The `0.0.x` releases on PyPI contain only the package skeleton; until the next release, use a
+checkout (`uv sync`). Optional extras:
 
 ```bash
-pip install "anysoar[mcp]"      # MCP server
-pip install "anysoar[shuffle]"  # Shuffle driver
+pip install "anysoar[mcp]"      # MCP server (anysoar-mcp)
+pip install "anysoar[testing]"  # driver contract test suite
+pip install "anysoar[shuffle]"  # Shuffle driver (planned)
 ```
 
-## Try it
+## Use it from an MCP client
+
+`anysoar-mcp` runs the MCP server over stdio. From a checkout, point your MCP client at it,
+for example:
+
+```json
+{
+  "mcpServers": {
+    "anysoar": {
+      "command": "uv",
+      "args": ["run", "--directory", "/path/to/anysoar", "anysoar-mcp"]
+    }
+  }
+}
+```
+
+The agent gets one tool per SOAR operation plus `describe_soar`. Run `anysoar-mcp --help`
+for options: `--driver` (currently `mock`), `--policy`, `--audit-log` and `--kill-switch`.
+
+## Guardrails
+
+- **Reads** run freely. **Writes** (add a note, close a case, run a playbook) need your
+  approval: your MCP client shows the action and asks you to approve it. Clients without
+  [elicitation](https://modelcontextprotocol.io) support can read but not write.
+- **Destructive** playbooks, such as disabling an account, are denied.
+- **Everything is audited** to `~/.local/state/anysoar/audit.jsonl`: each request, its
+  policy decision, the approval and the outcome.
+- **Kill switch:** `touch ~/.local/state/anysoar/STOP` denies every operation until you delete
+  the file.
+- Change the defaults with a policy file:
+
+  ```toml
+  # anysoar-mcp --policy policy.toml
+  [capabilities]
+  add_note = "allow"              # notes no longer need approval
+
+  [playbooks]
+  pb-notify-reporter = "allow"
+  ```
+
+Approval is only as trustworthy as the MCP client that asks you; see
+[ADR 0002](docs/adr/0002-policy-layer.md) for the design and its trust boundary.
+
+## Use it from Python
 
 The mock driver needs no SOAR. It serves a synthetic phishing scenario with alerts, cases,
 enrichment and playbooks. It isn't on PyPI yet, so run it from a checkout (`uv sync`, then
@@ -97,7 +142,8 @@ asyncio.run(main())
    capability discovery.
 2. **Mock driver** (done): an in-memory fake SOAR with synthetic alerts, plus a contract test
    suite every driver must pass.
-3. **MCP server and policy layer**: core tools, action tiers, approvals, audit log, kill switch.
+3. **MCP server and policy layer** (done): core tools, action tiers, approvals, audit log,
+   kill switch.
 4. **Reference agent**: an example phishing-triage agent running against the mock driver.
 5. **Shuffle driver**: the first real SOAR, with the agent working unchanged.
 6. **Console**: live agent reasoning and approve/reject for gated actions.

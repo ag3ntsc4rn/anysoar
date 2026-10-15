@@ -158,6 +158,7 @@ for behaviour specific to your SOAR alongside the suite.
 Drivers live in `packages/anysoar/src/anysoar/drivers/<name>/` and ship as an optional
 extra, `anysoar[<name>]`, so vendor dependencies stay out of the core install. (The mock
 driver has no dependencies, so it has no extra.) Background on
-the data model: [docs/adr/0001-ocsf-data-model.md](docs/adr/0001-ocsf-data-model.md).
+the data model: [docs/adr/0001-ocsf-data-model.md](docs/adr/0001-ocsf-data-model.md); on
+how tiers are enforced: [docs/adr/0002-policy-layer.md](docs/adr/0002-policy-layer.md).
 
 If you'd like a driver for a particular SOAR, open a "New driver request" issue.
