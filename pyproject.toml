@@ -8,6 +8,7 @@ members = ["packages/*", "apps/*"]
 
 [dependency-groups]
 dev = [
+    "anthropic>=1.15,<2", # anysoar-agent[claude], so the Claude backend is type checked and tested
     "mcp>=2.3", # the anysoar[mcp] extra, so the MCP server is type checked and tested
     "mypy>=2.4",
     "pre-commit>=4.7",
