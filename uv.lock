@@ -58,14 +58,20 @@ mcp = [
 shuffle = [
     { name = "httpx" },
 ]
+testing = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+]
 
 [package.metadata]
 requires-dist = [
     { name = "httpx", marker = "extra == 'shuffle'", specifier = ">=0.28" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=2.3" },
     { name = "pydantic", specifier = ">=2.14,<3" },
+    { name = "pytest", marker = "extra == 'testing'", specifier = ">=9.1" },
+    { name = "pytest-asyncio", marker = "extra == 'testing'", specifier = ">=1.4" },
 ]
-provides-extras = ["mcp", "shuffle"]
+provides-extras = ["mcp", "shuffle", "testing"]
 
 [[package]]
 name = "ast-serialize"

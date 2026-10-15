@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   It is seeded with a synthetic phishing scenario (8 alerts, 3 cases, 5 playbooks), gives
   deterministic enrichment, and advances playbook runs from queued to running to succeeded
   (or failed) one step per poll.
+- `anysoar.testing.DriverContract`: a reusable contract test suite every driver must pass.
+  Subclass it in a test module and override the `driver` fixture; tests for capabilities a
+  driver doesn't report are skipped. Install with the new `testing` extra
+  (`pip install "anysoar[testing]"`).
 
 ### Changed
 
