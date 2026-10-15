@@ -5,8 +5,9 @@
 [![CI](https://github.com/ag3ntsc4rn/anysoar/actions/workflows/ci.yml/badge.svg)](https://github.com/ag3ntsc4rn/anysoar/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-> **Status: pre-alpha.** The repository is scaffolded and the package name is reserved, but
-> nothing below the "Architecture" heading is implemented yet. Expect breaking changes.
+> **Status: pre-alpha.** The OCSF-aligned data model and the driver interface exist. There
+> are no drivers, MCP server or policy layer yet, so anysoar can't talk to a SOAR today.
+> Expect breaking changes.
 
 ## The problem
 

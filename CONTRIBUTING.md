@@ -48,14 +48,82 @@ publicly available.
 
 ## Writing a driver
 
-> The driver interface lands in roadmap phase 1. This section will document it once it exists.
+A driver connects anysoar to one SOAR platform. It subclasses `anysoar.interface.Driver`,
+translates the SOAR's API to and from anysoar's OCSF-aligned models, and overrides only the
+operations that SOAR supports.
 
-In outline, a driver will:
+### The contract
 
-1. Implement the driver contract in `anysoar.interface`.
-2. Translate between the SOAR's native API and anysoar's OCSF-aligned models.
-3. Report its capabilities so agents can discover what the underlying SOAR supports.
-4. Ship as an optional extra (`anysoar[<vendor>]`) with its own tests against recorded or
-   synthetic responses.
+| Operation | Tier | Returns |
+|---|---|---|
+| `list_alerts(query)` | read | `Page[DetectionFinding]`, newest first |
+| `get_alert(alert_uid)` | read | `DetectionFinding` |
+| `get_case(case_uid)` | read | `IncidentFinding` |
+| `add_note(case_uid, note)` | write | the stored `Note` |
+| `close_case(case_uid, verdict_id=..., comment=...)` | write | the updated `IncidentFinding` |
+| `enrich_indicator(indicator)` | read | `IndicatorEnrichment` |
+| `list_playbooks()` | read | `list[Playbook]` |
+| `run_playbook(playbook_uid, case_uid=..., alert_uid=..., inputs=...)` | write or higher | `PlaybookRun` (returns immediately) |
+| `get_playbook_run(run_uid)` | read | `PlaybookRun` |
+
+All operations are `async`. Each corresponds to a `Capability`, and its tier is listed in
+`CAPABILITY_TIERS`. Tiers are enforced by the policy layer, not by drivers.
+
+### Rules
+
+1. **Capabilities are the methods you override.** Don't stub operations your SOAR can't do;
+   leave them out and the base class raises `CapabilityNotSupportedError`. If support
+   depends on the SOAR version or API permissions, override `describe()` and return a
+   subset of `implemented_capabilities()`, never a superset.
+2. **Speak OCSF.** Map native fields to the models in `anysoar.models`. Put native values
+   that have no OCSF home in `unmapped` and keep the model valid. Never add fields to the
+   models for one vendor. Alert uids are `finding_info.uid`.
+3. **Use the error types.** Raise `NotFoundError` for missing objects and `DriverError` for
+   SOAR or network failures (set `retryable=True` for timeouts and rate limits). Don't let
+   vendor SDK or HTTP exceptions escape.
+4. **Declare playbook risk.** Set `Playbook.tier` to `DESTRUCTIVE` for playbooks that do
+   irreversible things (deleting data, disabling accounts, isolating hosts). If you can't
+   tell, keep the default `WRITE` and document it.
+5. **Release resources in `aclose()`.** Drivers are used as async context managers.
+6. **Test with synthetic data only.** Use recorded or hand-written responses with
+   `example.com` domains and documentation IP ranges (RFC 5737), never real alerts.
+
+### Skeleton
+
+```python
+from anysoar.errors import NotFoundError
+from anysoar.interface import AlertQuery, Driver, Page
+from anysoar.models import DetectionFinding
+
+
+class ExampleDriver(Driver):
+    name = "example"
+
+    def __init__(self, base_url: str, api_key: str) -> None:
+        self._client = ExampleClient(base_url, api_key)  # your HTTP client
+
+    async def list_alerts(self, query: AlertQuery | None = None) -> Page[DetectionFinding]:
+        query = query or AlertQuery()
+        raw = await self._client.alerts(limit=query.limit, cursor=query.cursor)
+        return Page(items=[to_alert(a) for a in raw["items"]], next_cursor=raw.get("next"))
+
+    async def get_alert(self, alert_uid: str) -> DetectionFinding:
+        raw = await self._client.alert(alert_uid)
+        if raw is None:
+            raise NotFoundError("alert", alert_uid)
+        return to_alert(raw)
+
+    async def aclose(self) -> None:
+        await self._client.close()
+```
+
+`ExampleDriver.implemented_capabilities()` is `{LIST_ALERTS, GET_ALERT}`, and agents will only
+be offered those operations.
+
+### Packaging
+
+Drivers live in `packages/anysoar/src/anysoar/drivers/<name>/` and ship as an optional
+extra, `anysoar[<name>]`, so vendor dependencies stay out of the core install. Background on
+the data model: [docs/adr/0001-ocsf-data-model.md](docs/adr/0001-ocsf-data-model.md).
 
 If you'd like a driver for a particular SOAR, open a "New driver request" issue.
