@@ -121,10 +121,43 @@ class ExampleDriver(Driver):
 `ExampleDriver.implemented_capabilities()` is `{LIST_ALERTS, GET_ALERT}`, and agents will only
 be offered those operations.
 
+### Testing your driver
+
+Every driver must pass the contract suite in `anysoar.testing` (install the `testing` extra,
+`pip install "anysoar[testing]"`). Subclass `DriverContract` in a test module and override
+its fixtures:
+
+```python
+import pytest
+
+from anysoar.testing import DriverContract
+
+
+class TestExampleDriver(DriverContract):
+    @pytest.fixture
+    def driver(self) -> ExampleDriver:
+        return ExampleDriver(transport=recorded_responses())  # never a production SOAR
+
+    @pytest.fixture
+    def case_uid(self) -> str:
+        return "case-1"  # an open case; needed only if you support case operations
+```
+
+The suite checks capability discovery, alert ordering, paging and filters, that findings are
+valid OCSF, case uids, notes, closing, enrichment, playbook runs reaching a final state, and
+`NotFoundError` handling. Tests for capabilities your driver doesn't report are skipped. Each
+test gets a fresh `driver`, and some tests write to it. Other fixtures you can override:
+`alert_uid`, `indicator`, `playbook_uid` and `playbook_inputs`. For slow SOARs you can also
+set the class attributes `playbook_poll_interval` and `playbook_max_polls`. Add your own tests
+for behaviour specific to your SOAR alongside the suite.
+
+`anysoar.drivers.mock` is a complete reference implementation that passes the suite.
+
 ### Packaging
 
 Drivers live in `packages/anysoar/src/anysoar/drivers/<name>/` and ship as an optional
-extra, `anysoar[<name>]`, so vendor dependencies stay out of the core install. Background on
+extra, `anysoar[<name>]`, so vendor dependencies stay out of the core install. (The mock
+driver has no dependencies, so it has no extra.) Background on
 the data model: [docs/adr/0001-ocsf-data-model.md](docs/adr/0001-ocsf-data-model.md).
 
 If you'd like a driver for a particular SOAR, open a "New driver request" issue.

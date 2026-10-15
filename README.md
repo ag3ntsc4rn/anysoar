@@ -5,9 +5,9 @@
 [![CI](https://github.com/ag3ntsc4rn/anysoar/actions/workflows/ci.yml/badge.svg)](https://github.com/ag3ntsc4rn/anysoar/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-> **Status: pre-alpha.** The OCSF-aligned data model and the driver interface exist. There
-> are no drivers, MCP server or policy layer yet, so anysoar can't talk to a SOAR today.
-> Expect breaking changes.
+> **Status: pre-alpha.** The OCSF-aligned data model, the driver interface, a mock driver
+> (an in-memory fake SOAR) and a driver contract test suite exist. There is no MCP server,
+> policy layer or real SOAR driver yet. Expect breaking changes.
 
 ## The problem
 
@@ -58,11 +58,45 @@ pip install "anysoar[mcp]"      # MCP server
 pip install "anysoar[shuffle]"  # Shuffle driver
 ```
 
+## Try it
+
+The mock driver needs no SOAR. It serves a synthetic phishing scenario with alerts, cases,
+enrichment and playbooks. It isn't on PyPI yet, so run it from a checkout (`uv sync`, then
+`uv run python`):
+
+```python
+import asyncio
+
+from anysoar.drivers.mock import MockDriver
+from anysoar.models import Observable, ObservableTypeId
+
+
+async def main() -> None:
+    async with MockDriver() as soar:
+        for alert in (await soar.list_alerts()).items:
+            print(alert.finding_info.uid, alert.finding_info.title)
+
+        sender = Observable(type_id=ObservableTypeId.EMAIL_ADDRESS, value="it-support@example.net")
+        result = await soar.enrich_indicator(sender)
+        print(result.observable.reputation)
+
+        run = await soar.run_playbook(
+            "pb-block-sender", case_uid="case-0001", inputs={"sender": sender.value}
+        )
+        while not run.status.is_finished:
+            run = await soar.get_playbook_run(run.uid)
+        print(run.status)
+
+
+asyncio.run(main())
+```
+
 ## Roadmap
 
-1. **Data model and driver interface**: OCSF-aligned models; a driver contract with capability
-   discovery.
-2. **Mock driver**: an in-memory fake SOAR with synthetic alerts.
+1. **Data model and driver interface** (done): OCSF-aligned models; a driver contract with
+   capability discovery.
+2. **Mock driver** (done): an in-memory fake SOAR with synthetic alerts, plus a contract test
+   suite every driver must pass.
 3. **MCP server and policy layer**: core tools, action tiers, approvals, audit log, kill switch.
 4. **Reference agent**: an example phishing-triage agent running against the mock driver.
 5. **Shuffle driver**: the first real SOAR, with the agent working unchanged.
