@@ -30,10 +30,19 @@ select = [
     "RUF", # ruff-specific
 ]
 
+[tool.ruff.lint.isort]
+known-first-party = ["anysoar"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["packages"]
+files = ["packages", "scripts"]
+plugins = ["pydantic.mypy"]
+
+[tool.pydantic-mypy]
+init_forbid_extra = false
+init_typed = true
+warn_required_dynamic_aliases = true
 
 [tool.pytest.ini_options]
 testpaths = ["packages"]
