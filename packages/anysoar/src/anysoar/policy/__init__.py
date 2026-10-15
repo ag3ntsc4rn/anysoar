@@ -10,7 +10,8 @@ actions are blocked. :class:`GuardedDriver` applies this to any driver::
 
     soar = GuardedDriver(MockDriver(), approver=my_approver, audit_log=JsonlAuditLog(path))
 
-Every step of every call is recorded in the audit log (see :mod:`anysoar.policy.audit`).
+Every step of every call is recorded in the audit log (see :mod:`anysoar.policy.audit`), and
+a :class:`KillSwitch` stops all operations at once.
 """
 
 from anysoar.policy.approval import Approval, ApprovalUnavailableError, ApproveAll, Approver
@@ -23,6 +24,7 @@ from anysoar.policy.audit import (
     audit_actor,
 )
 from anysoar.policy.guard import GuardedDriver
+from anysoar.policy.kill_switch import KillSwitch
 from anysoar.policy.rules import DEFAULT_TIER_DECISIONS, Action, Decision, Policy
 
 __all__ = [
@@ -38,6 +40,7 @@ __all__ = [
     "Decision",
     "GuardedDriver",
     "JsonlAuditLog",
+    "KillSwitch",
     "MemoryAuditLog",
     "Policy",
     "audit_actor",

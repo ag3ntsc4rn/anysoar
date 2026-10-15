@@ -38,6 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the decision, approval, then completed, denied or failed) as `AuditEvent`s sharing a
   `call_uid`. `JsonlAuditLog` appends to a user-only JSONL file; `MemoryAuditLog` keeps events
   in memory. An action that cannot be recorded is not run.
+- Kill switch: `GuardedDriver(kill_switch=KillSwitch(path))` denies every operation, reads
+  included, while the switch is engaged in process (`engage()`) or the file at `path` exists.
+  It is checked when each call arrives and again after approval.
 
 ### Changed
 
