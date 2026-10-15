@@ -6,8 +6,9 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
 > **Status: pre-alpha.** The OCSF-aligned data model, the driver interface, a mock driver
-> (an in-memory fake SOAR), the policy layer and the MCP server exist. There is no real SOAR
-> driver yet, so anysoar can only drive the mock. Expect breaking changes.
+> (an in-memory fake SOAR), the policy layer, the MCP server and a reference triage agent
+> exist. There is no real SOAR driver yet, so anysoar can only drive the mock. Expect
+> breaking changes.
 
 ## The problem
 
@@ -103,6 +104,19 @@ for options: `--driver` (currently `mock`), `--policy`, `--audit-log` and `--kil
 Approval is only as trustworthy as the MCP client that asks you; see
 [ADR 0002](docs/adr/0002-policy-layer.md) for the design and its trust boundary.
 
+## Watch an agent triage a case
+
+[`apps/agent`](apps/agent) is a reference phishing-triage agent. It is a plain MCP client,
+works with any LLM backend (Claude first), and asks you before every write. From a checkout,
+with no API key:
+
+```bash
+uv sync
+uv run anysoar-agent triage case-0002 --provider demo
+```
+
+Drop `--provider demo` and set `ANTHROPIC_API_KEY` to let Claude do the triage.
+
 ## Use it from Python
 
 The mock driver needs no SOAR. It serves a synthetic phishing scenario with alerts, cases,
@@ -144,7 +158,8 @@ asyncio.run(main())
    suite every driver must pass.
 3. **MCP server and policy layer** (done): core tools, action tiers, approvals, audit log,
    kill switch.
-4. **Reference agent**: an example phishing-triage agent running against the mock driver.
+4. **Reference agent** (done): an example phishing-triage agent running against the mock
+   driver, with pluggable LLM backends.
 5. **Shuffle driver**: the first real SOAR, with the agent working unchanged.
 6. **Console**: live agent reasoning and approve/reject for gated actions.
 7. **Demo**: an end-to-end scenario including swapping the SOAR underneath a running agent.
