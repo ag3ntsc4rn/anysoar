@@ -28,6 +28,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Subclass it in a test module and override the `driver` fixture; tests for capabilities a
   driver doesn't report are skipped. Install with the new `testing` extra
   (`pip install "anysoar[testing]"`).
+- `anysoar.policy`: the policy layer. `GuardedDriver` wraps any driver and runs every operation
+  through a `Policy`: by default reads are allowed, writes need approval from an `Approver`, and
+  destructive actions (including destructive playbooks) are denied. Overrides can be set per
+  capability or per playbook. Approvals time out, and a playbook whose risk is unknown is
+  treated as destructive.
+- `anysoar.errors`: `PolicyDeniedError` with a `DenialReason`.
 
 ### Changed
 
