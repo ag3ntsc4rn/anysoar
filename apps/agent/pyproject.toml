@@ -1,0 +1,17 @@
+[project]
+name = "anysoar-agent"
+version = "0.0.0"
+description = "Reference phishing-triage agent for anysoar. An example app; not published."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+authors = [{ name = "ag3ntsc4rn" }]
+classifiers = ["Private :: Do Not Upload"]
+dependencies = ["anysoar[mcp]"]
+
+[tool.uv.sources]
+anysoar = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.13.1,<0.14"]
+build-backend = "uv_build"

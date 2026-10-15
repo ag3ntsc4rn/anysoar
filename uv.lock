@@ -10,6 +10,7 @@ resolution-markers = [
 [manifest]
 members = [
     "anysoar",
+    "anysoar-agent",
 ]
 
 [manifest.dependency-groups]
@@ -73,6 +74,17 @@ requires-dist = [
     { name = "pytest-asyncio", marker = "extra == 'testing'", specifier = ">=1.4" },
 ]
 provides-extras = ["mcp", "shuffle", "testing"]
+
+[[package]]
+name = "anysoar-agent"
+version = "0.0.0"
+source = { editable = "apps/agent" }
+dependencies = [
+    { name = "anysoar", extra = ["mcp"] },
+]
+
+[package.metadata]
+requires-dist = [{ name = "anysoar", extras = ["mcp"], editable = "packages/anysoar" }]
 
 [[package]]
 name = "ast-serialize"
