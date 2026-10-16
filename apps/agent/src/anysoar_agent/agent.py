@@ -15,6 +15,7 @@ from anysoar_agent.model import (
     ToolResult,
     ToolResults,
     ToolSpec,
+    Usage,
     UserMessage,
 )
 
@@ -44,6 +45,13 @@ class AgentResult:
     stop: Literal["end", "max_turns", "max_tokens", "refusal"]
     turns: int
     transcript: list[Entry] = field(default_factory=list)
+
+    @property
+    def usage(self) -> Usage:
+        """Tokens used by every model turn of the run."""
+        return sum(
+            (e.usage for e in self.transcript if isinstance(e, AssistantTurn)), start=Usage()
+        )
 
 
 EventHandler = Callable[[AgentEvent], Awaitable[None] | None]

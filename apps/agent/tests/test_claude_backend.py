@@ -19,12 +19,16 @@ from anysoar_agent.model import (
     ToolResult,
     ToolResults,
     ToolSpec,
+    Usage,
     UserMessage,
 )
 
 
 def message(
-    *content: dict[str, Any], stop: str = "end_turn", model: str = "claude-opus-5-5"
+    *content: dict[str, Any],
+    stop: str = "end_turn",
+    model: str = "claude-opus-5-5",
+    usage: dict[str, int] | None = None,
 ) -> BetaMessage:
     return BetaMessage.model_validate(
         {
@@ -35,7 +39,7 @@ def message(
             "content": list(content),
             "stop_reason": stop,
             "stop_sequence": None,
-            "usage": {"input_tokens": 10, "output_tokens": 5},
+            "usage": usage or {"input_tokens": 10, "output_tokens": 5},
         }
     )
 
@@ -183,3 +187,19 @@ async def test_live_claude() -> None:
         "Call get_case for case-0002, then stop.", [UserMessage("Start.")], TOOLS
     )
     assert turn.tool_calls
+
+
+async def test_usage_counts_cached_input() -> None:
+    model, _ = claude(
+        message(
+            text("hi"),
+            usage={
+                "input_tokens": 50,
+                "cache_read_input_tokens": 900,
+                "cache_creation_input_tokens": 100,
+                "output_tokens": 40,
+            },
+        )
+    )
+    turn = await model.respond("", [UserMessage("go")], [])
+    assert turn.usage == Usage(input_tokens=1050, cached_input_tokens=900, output_tokens=40)

@@ -155,3 +155,12 @@ async def test_demo_over_stdio(tmp_path: Path) -> None:
 def test_demo_provider_only_knows_its_case() -> None:
     with pytest.raises(SystemExit, match="only knows case-0002"):
         main(["triage", "case-0001", "--provider", "demo"])
+
+
+def test_multiline_reasoning_is_indented_without_blank_lines() -> None:
+    out = io.StringIO()
+    event_printer(out)(AgentEvent("reasoning", text="\nFirst thought.\n\n\nSecond thought.\n"))
+    assert out.getvalue().splitlines() == [
+        "  (thinking) First thought.",
+        "             Second thought.",
+    ]

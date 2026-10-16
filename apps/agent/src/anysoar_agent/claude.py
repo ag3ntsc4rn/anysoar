@@ -28,6 +28,7 @@ from anysoar_agent.model import (
     ToolResults,
     ToolSpec,
     Transcript,
+    Usage,
     UserMessage,
 )
 
@@ -162,5 +163,17 @@ def to_turn(response: BetaMessage) -> AssistantTurn:
         tool_calls=tuple(calls),
         reasoning="\n".join(reasoning),
         model=response.model,
+        usage=_usage(response),
         raw=_ClaudeContent(tuple(response.content)),
+    )
+
+
+def _usage(response: BetaMessage) -> Usage:
+    u = response.usage
+    cache_read = u.cache_read_input_tokens or 0
+    cache_write = u.cache_creation_input_tokens or 0
+    return Usage(
+        input_tokens=u.input_tokens + cache_read + cache_write,
+        cached_input_tokens=cache_read,
+        output_tokens=u.output_tokens,
     )
