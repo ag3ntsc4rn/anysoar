@@ -47,6 +47,13 @@ _CASE_STAGES = {
 }
 """TheHive 5.8's built-in case statuses and their stages."""
 
+ANALYZERS = {
+    "DShield_lookup_1_0": ["ip"],
+    "Abuse_Finder_3_0": ["ip", "domain", "fqdn", "url", "mail"],
+}
+"""The lab's Cortex analyzers and the observable types they take. Abuse_Finder fails on
+documentation addresses, as the real one does; DShield reports each address's ``levels``."""
+
 _UPDATABLE = {"status", "tags", "summary"}
 """Case fields the fake lets a PATCH change."""
 
@@ -60,6 +67,13 @@ class FakeTheHive:
     """Observables by the id of their alert or case."""
     comments: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     """Comments by case number."""
+    jobs: dict[str, dict[str, Any]] = field(default_factory=dict)
+    levels: dict[str, str] = field(default_factory=lambda: {"198.51.100.23": "malicious"})
+    """The taxonomy level DShield gives each address; ``safe`` otherwise."""
+    stalled: set[str] = field(default_factory=set)
+    """Analyzers whose jobs never finish."""
+    cortex: bool = True
+    """Whether TheHive's Cortex connector is turned on."""
     requests: list[httpx2.Request] = field(default_factory=list)
     now: int = T0 + 60 * MINUTE
     """The fake's clock: changes happen at this time, and it moves on a minute each time."""
@@ -215,7 +229,9 @@ class FakeTheHive:
         self.observables[case_id] = []
         for alert_id in alerts or []:
             self.alerts[alert_id]["caseId"] = case_id
-            self.observables[case_id] += [dict(o) for o in self.observables[alert_id]]
+            self.observables[case_id] += [
+                {**o, "_id": self.next_id(), "reports": {}} for o in self.observables[alert_id]
+            ]
         self.comments[number] = []
         return number
 
@@ -261,9 +277,86 @@ class FakeTheHive:
             if method == "PATCH" and not comment:
                 self._update_case(number, body)
                 return httpx2.Response(204)
+        if path.startswith("/api/v1/connector/cortex/"):
+            if not self.cortex:
+                return _json(404, {"type": "NotFoundError", "message": f"{method} {path}"})
+            return self._cortex(method, path.removeprefix("/api/v1/connector/cortex/"), request)
+        if method == "GET" and (match := re.fullmatch(r"/api/v1/observable/(.+)", path)):
+            observable = self._observable(match[1])
+            return _json(200, observable) if observable else _not_found("Observable")
         if method == "POST" and path == "/api/v1/query":
             return _json(200, self._query(json.loads(request.content)["query"]))
         return _json(404, {"type": "NotFoundError", "message": f"{method} {path}"})
+
+    def _cortex(self, method: str, rest: str, request: httpx2.Request) -> httpx2.Response:
+        if method == "GET" and rest == "analyzer":
+            return _json(200, [_analyzer(name) for name in ANALYZERS])
+        if method == "GET" and (match := re.fullmatch(r"analyzer/type/(.+)", rest)):
+            names = [n for n, types in ANALYZERS.items() if match[1] in types]
+            return _json(200, [_analyzer(n) for n in names])
+        if method == "POST" and rest == "job":
+            body = json.loads(request.content)
+            name = next(n for n in ANALYZERS if _analyzer(n)["id"] == body["analyzerId"])
+            if self._observable(body["artifactId"]) is None:
+                return _not_found("Observable")
+            job_id = self.next_id()
+            self.jobs[job_id] = {
+                "_id": job_id,
+                "_type": "case_artifact_job",
+                "analyzerId": body["analyzerId"],
+                "analyzerName": "-",  # TheHive fills these in once Cortex takes the job
+                "cortexId": body.get("cortexId"),
+                "status": "Waiting",
+                "startDate": self.tick(),
+                "artifactId": body["artifactId"],
+                "polls": 0,
+                "name": name,
+            }
+            return _json(201, _public(self.jobs[job_id]))
+        if method == "GET" and (match := re.fullmatch(r"job/(.+)", rest)):
+            job = self.jobs.get(match[1])
+            if job is None:
+                return _json(404, {"type": "NotFoundError", "message": "Job not found"})
+            self._advance(job)
+            return _json(200, _public(job))
+        raise AssertionError(f"the fake does not support {method} cortex/{rest}")
+
+    def _advance(self, job: dict[str, Any]) -> None:
+        """Jobs run on the first poll and finish on the second, unless stalled."""
+        name = job["name"]
+        job["analyzerName"] = name
+        if job["status"] in ("Success", "Failure"):
+            return
+        job["polls"] += 1
+        if job["polls"] < 2 or name in self.stalled:
+            job["status"] = "InProgress"
+            return
+        job["endDate"] = self.tick()
+        observable = self._observable(job["artifactId"])
+        assert observable is not None
+        if name == "Abuse_Finder_3_0":
+            job["status"] = "Failure"
+            job["report"] = {
+                "success": False,
+                "errorMessage": "Traceback (most recent call last):\n  ...\n"
+                f"ipwhois.exceptions.IPDefinedError: IPv4 address {observable['data']} is "
+                "already defined as TEST-NET-3 via RFC 5737.\n",
+            }
+            return
+        level = self.levels.get(observable["data"], "safe")
+        job["status"] = "Success"
+        job["report"] = {"success": True, "full": {"ip": observable["data"], "reputation": level}}
+        observable["reports"][name] = {
+            "taxonomies": [
+                {"level": level, "namespace": "DShield", "predicate": "Score", "value": "0"}
+            ]
+        }
+
+    def _observable(self, observable_id: str) -> dict[str, Any] | None:
+        return next((o for o in self._all_observables() if o["_id"] == observable_id), None)
+
+    def _all_observables(self) -> list[dict[str, Any]]:
+        return [o for found in self.observables.values() for o in found]
 
     def _update_case(self, number: str, body: dict[str, Any]) -> None:
         unknown = set(body) - _UPDATABLE
@@ -286,6 +379,8 @@ class FakeTheHive:
             items = list(self.alerts.values())
         elif first["_name"] == "listCase":
             items = list(self.cases.values())
+        elif first["_name"] == "listObservable":
+            items = self._all_observables()
         elif first["_name"] == "getAlert" and rest and rest[0]["_name"] == "observables":
             items = list(self.observables.get(first["idOrName"], []))
             rest = rest[1:]
@@ -318,6 +413,20 @@ class FakeTheHive:
             else:
                 raise AssertionError(f"the fake does not support {op['_name']}")
         return items
+
+
+def _analyzer(name: str) -> dict[str, Any]:
+    return {
+        "id": uuid.uuid5(uuid.NAMESPACE_URL, f"https://thehive.test/{name}").hex,
+        "name": name,
+        "dataTypeList": ANALYZERS[name],
+        "cortexIds": ["Cortex"],
+    }
+
+
+def _public(job: dict[str, Any]) -> dict[str, Any]:
+    """A job as TheHive returns it, without the fake's bookkeeping."""
+    return {k: v for k, v in job.items() if k not in ("polls", "name", "artifactId")}
 
 
 def _sort_key(item: dict[str, Any], name: str) -> Any:
