@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+from anysoar.models import ObservableTypeId, ReputationScoreId
 from anysoar_agent.model import AssistantTurn, ToolCall, ToolResults, Transcript
 from anysoar_agent.scripted import ScriptedModel
 
@@ -128,11 +129,13 @@ def demo_model() -> ScriptedModel:
 
 
 def generic_demo_model(case_uid: str) -> ScriptedModel:
-    """A scripted triage that works on any case of any SOAR: read it, note it, finish.
+    """A scripted triage that works on any case of any SOAR: read it, enrich up to three of
+    its indicators if the SOAR offers enrichment, note what it found, finish.
 
     The note is a write, so it goes through approval. For offline demos of agents that work
     through many cases, e.g. ``anysoar-agent watch --provider demo``.
     """
+    seen: dict[str, object] = {}
 
     def turn(*calls: tuple[str, dict[str, object]], reasoning: str = "") -> AssistantTurn:
         return AssistantTurn(
@@ -145,31 +148,107 @@ def generic_demo_model(case_uid: str) -> ScriptedModel:
             model="demo",
         )
 
-    def note_from_case(transcript: Transcript) -> AssistantTurn:
+    def end(text: str) -> AssistantTurn:
+        return AssistantTurn(stop="end", model="demo", text=text)
+
+    def results(transcript: Transcript) -> ToolResults:
         last = transcript[-1]
         assert isinstance(last, ToolResults)
-        result = last.results[0]
-        if result.is_error:
-            return AssistantTurn(stop="end", model="demo", text=f"Could not read {case_uid}.")
-        case = json.loads(result.content)
-        title = case.get("message") or case_uid
-        observables = len(case.get("observables") or [])
-        comment = (
-            f"Triage (anysoar demo agent): reviewed '{title}' with {observables} indicators. "
-            "Recommended: an analyst confirms the verdict."
-        )
+        return last
+
+    def read_case(transcript: Transcript) -> AssistantTurn:
+        described = results(transcript).results[0]
+        if not described.is_error:
+            operations = json.loads(described.content).get("operations") or []
+            seen["can_enrich"] = any(
+                o.get("tool") == "enrich_indicator" and o.get("policy") != "deny"
+                for o in operations
+            )
+        return turn(("get_case", {"case_uid": case_uid}))
+
+    def note(reviewed: str, found: list[str]) -> AssistantTurn:
+        comment = f"Triage (anysoar demo agent): reviewed {reviewed}."
+        if found:
+            comment += " Indicator reputations: " + "; ".join(found) + "."
+        comment += " Recommended: an analyst confirms the verdict."
+        seen["noted"] = True
         return turn(
             ("add_note", {"case_uid": case_uid, "comment": comment}),
             reasoning="Recording what I reviewed for an analyst.",
         )
 
+    def after_case(transcript: Transcript) -> AssistantTurn:
+        result = results(transcript).results[0]
+        if result.is_error:
+            return end(f"Could not read {case_uid}.")
+        case = json.loads(result.content)
+        title = case.get("message") or case_uid
+        observables = case.get("observables") or []
+        seen["reviewed"] = f"'{title}' with {len(observables)} indicators"
+        indicators = []
+        for observable in observables:
+            kind = _ENRICHABLE.get(observable.get("type_id"))
+            value = observable.get("value")
+            # Email addresses include the people who received or reported the mail: only
+            # senders are looked up, and only where the SOAR says which field it came from.
+            if kind == "email_address" and observable.get("name") != "email.from":
+                continue
+            if kind and value and (kind, value) not in indicators:
+                indicators.append((kind, value))
+        # The likeliest evidence first.
+        indicators.sort(key=lambda i: list(_ENRICHABLE.values()).index(i[0]))
+        if not seen.get("can_enrich") or not indicators:
+            return note(str(seen["reviewed"]), [])
+        return turn(
+            *(("enrich_indicator", {"type": k, "value": v}) for k, v in indicators[:3]),
+            reasoning="Looking up the case's indicators before writing anything.",
+        )
+
+    def after_enrichment(transcript: Transcript) -> AssistantTurn:
+        if seen.get("noted"):
+            return end(f"Noted {case_uid} for an analyst to confirm.")
+        found = []
+        for result in results(transcript).results:
+            if result.is_error:
+                continue
+            enriched = json.loads(result.content)
+            observable = enriched.get("observable") or {}
+            score = (observable.get("reputation") or {}).get("score_id")
+            reports = len(enriched.get("enrichments") or [])
+            counted = f"{reports} report{'' if reports == 1 else 's'}"
+            found.append(f"{observable.get('value')} {_reputation(score)} ({counted})")
+        return note(str(seen["reviewed"]), found)
+
     return ScriptedModel(
         [
             turn(("describe_soar", {}), reasoning="Checking what this SOAR offers."),
-            turn(("get_case", {"case_uid": case_uid})),
-            note_from_case,
-            AssistantTurn(
-                stop="end", model="demo", text=f"Noted {case_uid} for an analyst to confirm."
-            ),
+            read_case,
+            after_case,
+            after_enrichment,
+            lambda _: end(f"Noted {case_uid} for an analyst to confirm."),
         ]
     )
+
+
+_ENRICHABLE = {
+    t.value: t.name.lower()
+    for t in (
+        ObservableTypeId.URL_STRING,
+        ObservableTypeId.IP_ADDRESS,
+        ObservableTypeId.HASH,
+        ObservableTypeId.HOSTNAME,
+        ObservableTypeId.EMAIL_ADDRESS,
+    )
+}
+"""OCSF observable type ids the demo agent enriches, by the name enrich_indicator takes, in
+the order it looks them up."""
+
+
+def _reputation(score_id: object) -> str:
+    """An OCSF reputation score id as the demo agent's note words it, e.g. ``suspicious``."""
+    if not isinstance(score_id, int) or score_id in (0, 99):
+        return "no verdict"
+    try:
+        return ReputationScoreId(score_id).name.lower().replace("_", " ")
+    except ValueError:
+        return "no verdict"
