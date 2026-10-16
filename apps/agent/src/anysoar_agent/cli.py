@@ -16,6 +16,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.types import ElicitRequestParams, ElicitResult, Implementation
 
 from anysoar_agent.agent import Agent, AgentEvent, AgentResult
+from anysoar_agent.console import ConsoleReporter, connection_file, read_connection
 from anysoar_agent.model import Model
 from anysoar_agent.toolbox import McpToolbox
 from anysoar_agent.triage import DEMO_CASE, SYSTEM_PROMPT, demo_model, task
@@ -139,6 +140,14 @@ def _parser() -> argparse.ArgumentParser:
     )
     triage.add_argument("--max-turns", type=int, default=40)
     triage.add_argument(
+        "--console",
+        nargs="?",
+        const="auto",
+        metavar="URL",
+        help="send approvals and activity to the anysoar console: the running one "
+        "(found through its console.env), or the one at URL with ANYSOAR_APPROVAL_TOKEN",
+    )
+    triage.add_argument(
         "--server-arg",
         action="append",
         default=[],
@@ -148,25 +157,66 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Sequence[str] | None = None) -> None:
-    args = _parser().parse_args(argv)
-    model = _model(args)
+def _console(args: argparse.Namespace) -> tuple[str, str] | None:
+    """The console's URL and submit token, if --console was given."""
+    if args.console is None:
+        return None
+    if args.console != "auto":
+        token = os.environ.get("ANYSOAR_APPROVAL_TOKEN")
+        if not token:
+            sys.exit("anysoar-agent: --console URL needs ANYSOAR_APPROVAL_TOKEN")
+        return args.console, token
+    path = connection_file()
+    if not path.exists():
+        sys.exit(f"anysoar-agent: no console running ({path} not found); start anysoar-console")
+    try:
+        return read_connection(path)
+    except ValueError as exc:
+        sys.exit(f"anysoar-agent: {exc}")
+
+
+async def _triage(args: argparse.Namespace, model: Model) -> AgentResult:
+    console = _console(args)
+    server_args, env = list(args.server_arg), dict(os.environ)
+    printer = event_printer()
+    reporter = None
+    if console is not None:
+        url, token = console
+        # Approvals go to the console instead of this terminal.
+        server_args += ["--approver", "http", "--approval-url", url]
+        env["ANYSOAR_APPROVAL_TOKEN"] = token
+        reporter = ConsoleReporter(url, token)
+        print(f"anysoar-agent: approvals and activity go to the console at {url}", file=sys.stderr)
+
+    async def on_event(event: AgentEvent) -> None:
+        printer(event)
+        if reporter is not None:
+            await reporter(event)
+
     server = StdioServerParameters(
-        command=sys.executable,
-        args=["-m", "anysoar.mcp", *args.server_arg],
-        env=dict(os.environ),
+        command=sys.executable, args=["-m", "anysoar.mcp", *server_args], env=env
     )
-    print(f"anysoar-agent: {model.name} triaging {args.case_uid}", file=sys.stderr)
-    result = asyncio.run(
-        run_triage(
+    try:
+        if reporter is not None:
+            await reporter.report("start", text=f"{model.name} triaging {args.case_uid}")
+        return await run_triage(
             args.case_uid,
             model,
             server,
             terminal_approver(),
             max_turns=args.max_turns,
-            on_event=event_printer(),
+            on_event=on_event,
         )
-    )
+    finally:
+        if reporter is not None:
+            await reporter.aclose()
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    args = _parser().parse_args(argv)
+    model = _model(args)
+    print(f"anysoar-agent: {model.name} triaging {args.case_uid}", file=sys.stderr)
+    result = asyncio.run(_triage(args, model))
     usage = result.usage
     print(
         f"anysoar-agent: {result.turns} turns; tokens in {usage.input_tokens} "
