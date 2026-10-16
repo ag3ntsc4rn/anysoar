@@ -30,6 +30,7 @@ anysoar-mcp = "anysoar.mcp.cli:main"
 [project.optional-dependencies]
 mcp = ["mcp>=2.3"]
 shuffle = ["httpx2>=2.13,<3"]
+tines = ["httpx2>=2.13,<3"]
 testing = ["pytest>=9.1", "pytest-asyncio>=1.4"]
 
 [project.urls]

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `anysoar.drivers.tines`: `TinesDriver` for the Tines SOAR (`anysoar[tines]`), configured
+  by `TINES_URL`, `TINES_API_KEY` and optionally `TINES_TEAM_ID`. Cases are Tines cases
+  (`list_cases`, `get_case`, `add_note`, `close_case`); OCSF statuses come from Tines'
+  open/closed status and sub-status, and the verdict is kept as a `verdict:<name>` case tag.
+  Playbooks are stories enabled for Send to Story, run through their entry webhook and
+  finished when they reach an exit action. Stories tagged `anysoar:destructive` are
+  destructive. Built from Tines' API reference and tested against a fake built from it;
+  the contract suite also runs against a real tenant with `ANYSOAR_LIVE_TINES=1`.
+- `anysoar-mcp --driver tines` serves a Tines tenant.
+
 ## [0.2.1] - 2026-10-16
 
 ### Fixed

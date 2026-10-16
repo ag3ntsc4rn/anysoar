@@ -157,7 +157,8 @@ for behaviour specific to your SOAR alongside the suite.
 error responses to anysoar's errors, translation of a vendor's near-OCSF records, the
 contract suite run against an in-process fake built from captured responses, and the same
 suite run against a live instance behind an opt-in environment variable
-(`ANYSOAR_LIVE_SHUFFLE=1`).
+(`ANYSOAR_LIVE_SHUFFLE=1`). `anysoar.drivers.tines` follows the same pattern for a SaaS
+SOAR (`ANYSOAR_LIVE_TINES=1`).
 
 ### Packaging
 
