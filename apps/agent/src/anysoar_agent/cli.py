@@ -258,6 +258,17 @@ async def _watch(args: argparse.Namespace) -> list[Handled]:
             name = shared.name if shared is not None else "demo"
             await session.reporter.report("start", text=f"{name} triaging {case_uid} on {soar}")
 
+    async def on_done(done: Handled) -> None:
+        if done.switched_to is None:
+            return
+        warning = (
+            f"The SOAR switched from {done.soar} to {done.switched_to} while {done.case_uid} "
+            "was in progress; its later actions went to the new SOAR and may have failed."
+        )
+        print(f"anysoar-agent: {warning}", file=sys.stderr)
+        if session.reporter is not None:
+            await session.reporter.report("text", text=warning)
+
     print(
         f"anysoar-agent: watching for {', '.join(statuses)} cases every {args.interval:g}s "
         "(Ctrl-C to stop)",
@@ -278,6 +289,7 @@ async def _watch(args: argparse.Namespace) -> list[Handled]:
                 max_turns=args.max_turns,
                 on_event=session.on_event,
                 on_case=on_case,
+                on_done=on_done,
             )
     finally:
         if session.reporter is not None:
