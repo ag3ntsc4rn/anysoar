@@ -29,8 +29,16 @@ __all__ = ["DRIVERS", "load_policy", "main", "state_dir"]
 
 logger = logging.getLogger("anysoar.mcp")
 
-DRIVERS: dict[str, Callable[[], Driver]] = {"mock": MockDriver}
-"""Drivers the command can start, by name."""
+
+def _shuffle() -> Driver:
+    from anysoar.drivers.shuffle import ShuffleDriver
+
+    return ShuffleDriver()  # configured by SHUFFLE_URL and SHUFFLE_API_KEY
+
+
+DRIVERS: dict[str, Callable[[], Driver]] = {"mock": MockDriver, "shuffle": _shuffle}
+"""Drivers the command can start, by name. Real SOARs are configured by environment
+variables, e.g. ``SHUFFLE_URL`` and ``SHUFFLE_API_KEY``."""
 
 
 def state_dir() -> Path:
@@ -77,7 +85,8 @@ def _parser() -> argparse.ArgumentParser:
         "--driver",
         choices=sorted(DRIVERS),
         default=env("ANYSOAR_DRIVER", "mock"),
-        help="SOAR driver to use (env ANYSOAR_DRIVER; default: %(default)s)",
+        help="SOAR driver to use (env ANYSOAR_DRIVER; default: %(default)s). "
+        "shuffle reads SHUFFLE_URL and SHUFFLE_API_KEY",
     )
     parser.add_argument(
         "--policy",
@@ -102,11 +111,11 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-async def _serve(args: argparse.Namespace, policy: Policy) -> None:
+async def _serve(args: argparse.Namespace, policy: Policy, driver: Driver) -> None:
     from anysoar.mcp.server import ElicitationApprover, create_server
 
     guard = GuardedDriver(
-        DRIVERS[args.driver](),
+        driver,
         policy=policy,
         approver=ElicitationApprover(),
         audit_log=JsonlAuditLog(args.audit_log),
@@ -132,5 +141,9 @@ def main(argv: Sequence[str] | None = None) -> None:
     except (OSError, ValueError, tomllib.TOMLDecodeError) as exc:
         detail = str(exc) if not isinstance(exc, ValidationError) else f"\n{exc}"
         sys.exit(f"anysoar-mcp: invalid policy {args.policy}: {detail}")
+    try:
+        driver = DRIVERS[args.driver]()
+    except ValueError as exc:
+        sys.exit(f"anysoar-mcp: cannot start the {args.driver} driver: {exc}")
     with contextlib.suppress(KeyboardInterrupt):
-        asyncio.run(_serve(args, policy))
+        asyncio.run(_serve(args, policy, driver))
