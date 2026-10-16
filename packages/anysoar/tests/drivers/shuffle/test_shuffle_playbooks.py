@@ -1,16 +1,20 @@
 import json
 import os
+import uuid
+from collections.abc import AsyncIterator
 
 import httpx2
 import pytest
+import pytest_asyncio
 
 from anysoar.drivers.shuffle import ShuffleDriver
 from anysoar.drivers.shuffle.client import ShuffleAPIError
+from anysoar.drivers.shuffle.incidents import CATEGORY
 from anysoar.errors import DriverError, NotFoundError
 from anysoar.interface import ActionTier, Capability, PlaybookRunStatus
 from anysoar.testing import DriverContract
 
-from .fake_shuffle import API_KEY, BASE_URL, FakeShuffle
+from .fake_shuffle import API_KEY, BASE_URL, FakeShuffle, new_incident
 
 
 @pytest.fixture
@@ -25,8 +29,16 @@ def soar(shuffle: FakeShuffle) -> ShuffleDriver:
 
 class TestShuffleContract(DriverContract):
     @pytest.fixture
-    def driver(self) -> ShuffleDriver:
-        return ShuffleDriver(BASE_URL, API_KEY, transport=FakeShuffle().transport())
+    def fake(self) -> FakeShuffle:
+        return FakeShuffle()
+
+    @pytest.fixture
+    def driver(self, fake: FakeShuffle) -> ShuffleDriver:
+        return ShuffleDriver(BASE_URL, API_KEY, transport=fake.transport())
+
+    @pytest.fixture
+    def case_uid(self, fake: FakeShuffle) -> str:
+        return fake.open_incident
 
 
 class TestConfiguration:
@@ -35,6 +47,9 @@ class TestConfiguration:
         assert info.name == "shuffle"
         assert info.soar_product == "Shuffle"
         assert info.capabilities == {
+            Capability.GET_CASE,
+            Capability.ADD_NOTE,
+            Capability.CLOSE_CASE,
             Capability.LIST_PLAYBOOKS,
             Capability.RUN_PLAYBOOK,
             Capability.GET_PLAYBOOK_RUN,
@@ -184,3 +199,16 @@ class TestLiveShuffleContract(DriverContract):
     @pytest.fixture
     def driver(self) -> ShuffleDriver:
         return ShuffleDriver()
+
+    @pytest_asyncio.fixture
+    async def case_uid(self, driver: ShuffleDriver) -> AsyncIterator[str]:
+        """A synthetic incident created for the test and deleted afterwards."""
+        uid = str(uuid.uuid4())
+        await driver._save_incident(new_incident(uid))
+        yield uid
+        org = await driver._org_id()
+        await driver._client.request(
+            "POST",  # not DELETE, despite Shuffle's integration guide
+            f"/api/v1/orgs/{org}/delete_cache",
+            json={"key": uid, "category": CATEGORY, "org_id": org},  # org_id is required
+        )

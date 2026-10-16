@@ -53,6 +53,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   workflows are playbooks: list, run (the inputs and case/alert context become the execution
   argument) and poll runs. Workflows tagged `anysoar:destructive` are destructive playbooks.
   Shuffle's inconsistent error responses map to `NotFoundError` and `DriverError`.
+- Shuffle cases: `ShuffleDriver` reads and updates Shuffle incidents (the records the Shuffle
+  Security UI shows) as cases: `get_case`, `add_note` and `close_case`. Shuffle's status
+  numbering, activity-log comments and text verdicts are translated to and from OCSF; notes
+  are written as UI comments marked AI-handled.
 - `anysoar-mcp` command (also `python -m anysoar.mcp`): runs the MCP server over stdio with
   `--driver` (currently `mock`), `--policy` (TOML; unlisted tiers keep their defaults),
   `--audit-log` and `--kill-switch`, each also settable with an `ANYSOAR_*` environment
