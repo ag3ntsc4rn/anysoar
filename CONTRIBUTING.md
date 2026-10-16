@@ -152,6 +152,11 @@ set the class attributes `playbook_poll_interval` and `playbook_max_polls`. Add 
 for behaviour specific to your SOAR alongside the suite.
 
 `anysoar.drivers.mock` is a complete reference implementation that passes the suite.
+`anysoar.drivers.shuffle` shows a driver for a real SOAR: an HTTP client that maps the SOAR's
+error responses to anysoar's errors, translation of a vendor's near-OCSF records, the
+contract suite run against an in-process fake built from captured responses, and the same
+suite run against a live instance behind an opt-in environment variable
+(`ANYSOAR_LIVE_SHUFFLE=1`).
 
 ### Packaging
 

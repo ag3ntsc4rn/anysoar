@@ -4,8 +4,8 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 env_file=.env.local
-args=(--env-file "$env_file")
-[[ -f $env_file ]] || args=()
+args=(--env-file "$env_file" --profile ui)  # the profile so the optional UI stops too
+[[ -f $env_file ]] || args=(--profile ui)
 
 if [[ ${1:-} == --purge ]]; then
   docker compose "${args[@]}" down --volumes --remove-orphans

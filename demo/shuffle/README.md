@@ -5,9 +5,20 @@ driver. It runs Shuffle 2.3.0 natively on Apple Silicon or x86 with Docker.
 
 ```bash
 ./up.sh               # start; first run generates secrets into .env.local and pulls images
+./up.sh --ui          # also start Shuffle Security, Shuffle's incident UI (port 3002)
 ./down.sh             # stop, keeping data
 ./down.sh --purge     # remove containers, data, Shuffle's app images and .env.local
 ```
+
+Then load anysoar's synthetic phishing scenario (re-running resets it):
+
+```bash
+uv run demo/shuffle/seed.py
+```
+
+It creates the mock driver's three cases as Shuffle incidents and one stand-in workflow per
+playbook (each just echoes its input; "Disable user account" is tagged
+`anysoar:destructive`), and prints the command to let the reference agent triage a case.
 
 `up.sh` prints the web UI address (http://localhost:3001, user `admin`), the API address, and
 the `SHUFFLE_URL` / `SHUFFLE_API_KEY` variables the driver uses. The admin password and API
@@ -33,8 +44,9 @@ key are random per install and live only in `.env.local`, which is git-ignored.
   runs workflow containers directly, which is enough for a lab.
 - **No Tenzir.** Orborus otherwise starts a `tenzir-node` pipeline container from an
   unpinned image. `SHUFFLE_SKIP_PIPELINES=true` turns that off.
-- The `shuffle-security` incidents UI is left out: its image is amd64-only and the API
-  works without it.
+- The `shuffle-security` incident UI is optional (`./up.sh --ui`). Its image is published
+  for amd64 only, so it runs under emulation on Apple Silicon, and only as `latest`, so it is
+  pinned by digest here. The API and the driver work without it.
 - **No self-test loop.** Shuffle's built-in health check runs a many-step test workflow over
   and over, so containers appear and disappear constantly in Docker Desktop.
   `SHUFFLE_HEALTHCHECK_DISABLED=true` turns it off.

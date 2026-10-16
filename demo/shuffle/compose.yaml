@@ -123,6 +123,21 @@ services:
     depends_on: [backend]
     restart: unless-stopped
 
+  # Optional: Shuffle Security, Shuffle's incident UI, to see what agents did to cases.
+  # Start with ./up.sh --ui. Its image is published for amd64 only (it runs under emulation
+  # on Apple Silicon) and only as "latest", so it is pinned by digest.
+  security-ui:
+    profiles: [ui]
+    image: ghcr.io/shuffle/shuffle-security@sha256:9d8587d2bd740e999e073a939b4a65eadf057c983742f0e052ee1a4c3bc89460
+    platform: linux/amd64
+    ports:
+      - 127.0.0.1:${SHUFFLE_SECURITY_UI_PORT:-3002}:80
+    environment:
+      BACKEND_HOSTNAME: shuffle-backend
+    networks: [shuffle]
+    depends_on: [backend]
+    restart: unless-stopped
+
 volumes:
   opensearch-data:
   shuffle-apps:

@@ -36,6 +36,20 @@ lure) and `case-0003` (already closed). Options:
 - `--max-turns`: default 40
 - `--server-arg`: passed to `anysoar-mcp`, e.g. `--server-arg=--policy=policy.toml`
 
+### On Shuffle
+
+The agent needs no changes to triage a case on a real SOAR. Start the local Shuffle lab and
+load the scenario (see [demo/shuffle](../../demo/shuffle)), then:
+
+```bash
+export SHUFFLE_URL=http://127.0.0.1:5001
+export SHUFFLE_API_KEY="$(grep ^SHUFFLE_API_KEY= demo/shuffle/.env.local | cut -d= -f2)"
+uv run anysoar-agent triage <case id printed by seed.py> --server-arg=--driver=shuffle
+```
+
+With `demo/shuffle/up.sh --ui`, open http://localhost:3002 to see the agent's notes and
+case closures in Shuffle's own incident UI.
+
 The Claude backend uses adaptive thinking (shown as `(thinking)` lines), prompt caching, and
 server-side fallbacks: if a safety classifier declines a request, the API retries it on a
 recommended fallback model within the same call.

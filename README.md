@@ -5,9 +5,9 @@
 [![CI](https://github.com/ag3ntsc4rn/anysoar/actions/workflows/ci.yml/badge.svg)](https://github.com/ag3ntsc4rn/anysoar/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-> **Status: pre-alpha.** The OCSF-aligned data model, the driver interface, a mock driver
-> (an in-memory fake SOAR), the policy layer, the MCP server and a reference triage agent
-> exist. There is no real SOAR driver yet, so anysoar can only drive the mock. Expect
+> **Status: pre-alpha.** The OCSF-aligned data model, the driver interface, the policy
+> layer, the MCP server, a reference triage agent, and two drivers exist: a mock (an
+> in-memory fake SOAR) and [Shuffle](https://shuffler.io), the first real SOAR. Expect
 > breaking changes.
 
 ## The problem
@@ -58,7 +58,7 @@ checkout (`uv sync`). Optional extras:
 ```bash
 pip install "anysoar[mcp]"      # MCP server (anysoar-mcp)
 pip install "anysoar[testing]"  # driver contract test suite
-pip install "anysoar[shuffle]"  # Shuffle driver (planned)
+pip install "anysoar[shuffle]"  # Shuffle driver
 ```
 
 ## Use it from an MCP client
@@ -78,7 +78,7 @@ for example:
 ```
 
 The agent gets one tool per SOAR operation plus `describe_soar`. Run `anysoar-mcp --help`
-for options: `--driver` (currently `mock`), `--policy`, `--audit-log` and `--kill-switch`.
+for options: `--driver` (`mock` or `shuffle`), `--policy`, `--audit-log` and `--kill-switch`.
 
 ## Guardrails
 
@@ -116,6 +116,24 @@ uv run anysoar-agent triage case-0002 --provider demo
 ```
 
 Drop `--provider demo` and set `ANTHROPIC_API_KEY` to let Claude do the triage.
+
+## Swap the SOAR underneath
+
+The same agent works on [Shuffle](https://shuffler.io) without changes. Run a local Shuffle
+with [`demo/shuffle`](demo/shuffle) (Docker), load the same phishing scenario into it, and
+point anysoar at it:
+
+```bash
+demo/shuffle/up.sh --ui          # Shuffle, plus its incident UI on http://localhost:3002
+uv run demo/shuffle/seed.py      # the scenario's cases and playbooks; prints the case ids
+export SHUFFLE_URL=http://127.0.0.1:5001
+export SHUFFLE_API_KEY="$(grep ^SHUFFLE_API_KEY= demo/shuffle/.env.local | cut -d= -f2)"
+uv run anysoar-agent triage <case id> --server-arg=--driver=shuffle
+```
+
+Shuffle offers fewer operations than the mock (no alerts, no indicator enrichment), so the
+agent is offered fewer tools and adapts: without reputation data it reports a verdict as
+unconfirmed instead of guessing. Its notes and case closures show up in Shuffle's own UI.
 
 ## Use it from Python
 
@@ -160,7 +178,7 @@ asyncio.run(main())
    kill switch.
 4. **Reference agent** (done): an example phishing-triage agent running against the mock
    driver, with pluggable LLM backends.
-5. **Shuffle driver**: the first real SOAR, with the agent working unchanged.
+5. **Shuffle driver** (done): the first real SOAR, with the agent working unchanged.
 6. **Console**: live agent reasoning and approve/reject for gated actions.
 7. **Demo**: an end-to-end scenario including swapping the SOAR underneath a running agent.
 
