@@ -46,13 +46,27 @@ def main(argv: Sequence[str] | None = None) -> None:
         default=os.environ.get("ANYSOAR_OPERATOR", "console"),
         help="name recorded as the approver of your decisions (default: %(default)s)",
     )
+    parser.add_argument(
+        "--audit-log",
+        type=Path,
+        default=os.environ.get("ANYSOAR_AUDIT_LOG") or state_dir() / "audit.jsonl",
+        help="anysoar's audit log to show (default: %(default)s, as anysoar-mcp)",
+    )
+    parser.add_argument(
+        "--kill-switch",
+        type=Path,
+        default=os.environ.get("ANYSOAR_KILL_SWITCH") or state_dir() / "STOP",
+        help="anysoar's kill switch file (default: %(default)s, as anysoar-mcp)",
+    )
     args = parser.parse_args(argv)
 
     with socket.socket() as probe:
         if probe.connect_ex((HOST, args.port)) == 0:
             sys.exit(f"anysoar-console: port {args.port} is in use; pick another with --port")
 
-    config = ConsoleConfig(operator=args.operator)
+    config = ConsoleConfig(
+        operator=args.operator, audit_log=args.audit_log, kill_switch=args.kill_switch
+    )
     url = f"http://{HOST}:{args.port}"
     connection = connection_file()
     write_connection_file(connection, url, config.submit_token)

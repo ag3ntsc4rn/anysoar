@@ -107,6 +107,114 @@ function tick() {
   });
 }
 
+// -- Agent activity -------------------------------------------------------------------
+
+const AGENT_LABELS = {
+  start: "Started",
+  reasoning: "Thinking",
+  text: "Says",
+  tool_call: "Calls",
+  tool_result: "Result",
+  done: "Finished",
+};
+
+function agentItem(event) {
+  const li = document.createElement("li");
+  li.className = event.kind;
+  const label = document.createElement("span");
+  label.className = "label";
+  label.textContent = AGENT_LABELS[event.kind] || event.kind;
+  li.append(label);
+  if (event.kind === "tool_call") {
+    const code = document.createElement("code");
+    const args = event.arguments ? JSON.stringify(event.arguments) : "";
+    code.textContent = `${event.tool}(${args})`;
+    li.append(code);
+  } else if (event.kind === "tool_result") {
+    li.classList.add(event.ok === false ? "failed" : "ok");
+    label.textContent = `${event.tool || "Result"}: ${event.ok === false ? "failed" : "ok"}`;
+    if (event.ok === false && event.output) li.append(document.createTextNode(event.output));
+  } else if (event.text) {
+    li.append(document.createTextNode(event.text));
+  }
+  return li;
+}
+
+function addAgent(event) {
+  const feed = $("agent");
+  const atBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 40;
+  feed.append(agentItem(event));
+  while (feed.children.length > 300) feed.firstElementChild.remove();
+  if (atBottom) feed.scrollTop = feed.scrollHeight;
+  $("agent-empty").hidden = true;
+}
+
+// -- Audit trail ----------------------------------------------------------------------
+
+function auditRow(event) {
+  const tr = document.createElement("tr");
+  const cell = (cls, text) => {
+    const td = document.createElement("td");
+    if (cls) td.className = cls;
+    if (text instanceof Node) td.append(text);
+    else td.textContent = text ?? "";
+    tr.append(td);
+  };
+  const badge = document.createElement("span");
+  badge.className = `badge ${event.kind}`;
+  badge.textContent = event.kind;
+  const details = [];
+  if (event.decision) details.push(`policy: ${event.decision}`);
+  if (event.approval) {
+    const a = event.approval;
+    details.push(`${a.approved ? "approved" : "rejected"} by ${a.approver ?? "unknown"}`);
+    if (a.reason) details.push(`"${a.reason}"`);
+  }
+  if (event.reason) details.push(event.reason);
+  if (event.detail) details.push(event.detail);
+  if (event.result_ref) details.push(`result ${event.result_ref}`);
+  if (event.duration_ms != null) details.push(`${event.duration_ms} ms`);
+  if (event.actor) details.push(event.actor);
+  cell("when", event.time ? new Date(event.time).toLocaleTimeString() : "");
+  cell("", badge);
+  cell("op", event.capability);
+  cell("", event.summary);
+  cell("details", details.join(" · "));
+  return tr;
+}
+
+function addAudit(event) {
+  const body = $("audit");
+  body.prepend(auditRow(event));
+  while (body.children.length > 200) body.lastElementChild.remove();
+  $("audit-table").hidden = false;
+  $("audit-empty").hidden = true;
+}
+
+// -- Kill switch ----------------------------------------------------------------------
+
+function showSwitch(state) {
+  $("stop").hidden = !state.available || state.engaged;
+  $("stopped").hidden = !state.engaged;
+  $("stopped-reason").textContent = state.reason || "";
+}
+
+async function setSwitch(engaged) {
+  let reason = null;
+  if (engaged) {
+    reason = prompt("Stop every action anysoar would take, including reads. Reason?", "");
+    if (reason === null) return;
+  } else if (!confirm("Resume? Agents' actions will go through the policy again.")) {
+    return;
+  }
+  try {
+    showSwitch(await call("/ui/kill-switch", { method: "POST", body: JSON.stringify({ engaged, reason }) }));
+    toast(engaged ? "All actions stopped" : "Resumed");
+  } catch (error) {
+    toast(`Could not change the kill switch: ${error.message}`);
+  }
+}
+
 function connected(live) {
   $("connection").className = `dot ${live ? "live" : "down"}`;
   $("connection-label").textContent = live ? "Live" : "Reconnecting…";
@@ -117,6 +225,11 @@ async function start() {
   $("operator").textContent = state.operator;
   state.approvals.forEach((a) => approvals.set(a.id, a));
   render();
+  state.agent.forEach(addAgent);
+  state.audit.forEach(addAudit);
+  showSwitch(state.kill_switch);
+  $("stop").addEventListener("click", () => setSwitch(true));
+  $("resume").addEventListener("click", () => setSwitch(false));
 
   const stream = new EventSource("/ui/stream");
   stream.addEventListener("open", async () => {
@@ -127,6 +240,9 @@ async function start() {
     render();
   });
   stream.addEventListener("error", () => connected(false));
+  stream.addEventListener("agent", (event) => addAgent(JSON.parse(event.data).data));
+  stream.addEventListener("audit", (event) => addAudit(JSON.parse(event.data).data));
+  stream.addEventListener("kill_switch", (event) => showSwitch(JSON.parse(event.data).data));
   stream.addEventListener("approval", (event) => {
     const approval = JSON.parse(event.data).data;
     approvals.set(approval.id, approval);

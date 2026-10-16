@@ -14,13 +14,17 @@ The app listens on localhost only and rejects other Host headers (DNS rebinding)
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import hmac
 import json
 import secrets
+import time
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from importlib.resources import files
+from pathlib import Path
+from typing import Any
 
 from sse_starlette.sse import EventSourceResponse
 from starlette.applications import Starlette
@@ -31,10 +35,13 @@ from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Re
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from anysoar_console.store import ApprovalStore, EventBus
+from anysoar.policy import KillSwitch
+from anysoar_console.store import ApprovalStore, EventBus, Feed
+from anysoar_console.watch import follow_audit_log, watch_kill_switch
 
 __all__ = ["ConsoleConfig", "create_app"]
 
+AGENT_EVENT_KINDS = {"start", "reasoning", "text", "tool_call", "tool_result", "done"}
 SESSION_COOKIE = "anysoar_console"
 CSRF_HEADER = "X-Anysoar-Console"
 MAX_WAIT = 30.0
@@ -47,6 +54,10 @@ class ConsoleConfig:
     submit_token: str = field(default_factory=lambda: secrets.token_urlsafe(32))
     login_token: str = field(default_factory=lambda: secrets.token_urlsafe(32))
     allowed_hosts: tuple[str, ...] = ("127.0.0.1", "localhost")
+    audit_log: Path | None = None
+    """anysoar's audit log to show as it grows."""
+    kill_switch: Path | None = None
+    """anysoar's kill switch file, engaged and released from the console."""
 
 
 def _same(secret: str, candidate: str | None) -> bool:
@@ -60,6 +71,9 @@ def create_app(
     config = config or ConsoleConfig()
     bus = EventBus()
     store = ApprovalStore(bus)
+    agent_feed = Feed(bus, "agent")
+    audit_feed = Feed(bus, "audit")
+    switch = KillSwitch(config.kill_switch) if config.kill_switch else None
     sessions: set[str] = set()
     static = files("anysoar_console") / "static"
 
@@ -109,6 +123,29 @@ def create_app(
             return JSONResponse({"error": "no such approval"}, status_code=404)
         return JSONResponse({"status": approval.status})
 
+    async def agent_event(request: Request) -> Response:
+        # Agents report what they are doing. Their text is untrusted: the page only ever
+        # renders it as text, and it is length-limited here.
+        if not submitter(request):
+            return denied
+        body = await request.json()
+        kind = body.get("kind")
+        if kind not in AGENT_EVENT_KINDS:
+            return JSONResponse({"error": "unknown event kind"}, status_code=400)
+        event: dict[str, Any] = {"kind": kind, "time": _now()}
+        for key, limit in (("run", 100), ("text", 20_000), ("tool", 100), ("output", 4_000)):
+            value = body.get(key)
+            if isinstance(value, str):
+                event[key] = value[:limit]
+        arguments = body.get("arguments")
+        if isinstance(arguments, dict):
+            small = len(json.dumps(arguments)) <= 4_000
+            event["arguments"] = arguments if small else {"truncated": True}
+        if isinstance(body.get("ok"), bool):
+            event["ok"] = body["ok"]
+        agent_feed.add(event)
+        return JSONResponse({"ok": True}, status_code=202)
+
     # -- People -----------------------------------------------------------------------------
 
     async def login(request: Request) -> Response:
@@ -131,8 +168,33 @@ def create_app(
         if not person(request):
             return denied
         return JSONResponse(
-            {"operator": config.operator, "approvals": [a.public() for a in store.all()]}
+            {
+                "operator": config.operator,
+                "approvals": [a.public() for a in store.all()],
+                "agent": agent_feed.all(),
+                "audit": audit_feed.all(),
+                "kill_switch": _switch_state(switch),
+            }
         )
+
+    async def kill_switch(request: Request) -> Response:
+        if not person(request, writing=True):
+            return denied
+        if switch is None or switch.path is None:
+            return JSONResponse({"error": "no kill switch configured"}, status_code=409)
+        body = await request.json()
+        if body.get("engaged") is True:
+            reason = body.get("reason")
+            text = reason.strip()[:200] if isinstance(reason, str) and reason.strip() else ""
+            switch.path.parent.mkdir(parents=True, exist_ok=True)
+            switch.path.write_text(f"{text or 'stopped from the console'} ({config.operator})\n")
+        elif body.get("engaged") is False:
+            switch.path.unlink(missing_ok=True)
+        else:
+            return JSONResponse({"error": "engaged must be true or false"}, status_code=400)
+        state = _switch_state(switch)
+        bus.publish("kill_switch", state)
+        return JSONResponse(state)
 
     async def decide(request: Request) -> Response:
         if not person(request, writing=True):
@@ -167,9 +229,16 @@ def create_app(
 
     @contextlib.asynccontextmanager
     async def lifespan(_: Starlette) -> AsyncIterator[None]:
+        tasks = []
+        if config.audit_log is not None:
+            tasks.append(asyncio.create_task(follow_audit_log(config.audit_log, audit_feed)))
+        if switch is not None:
+            tasks.append(asyncio.create_task(watch_kill_switch(switch, bus)))
         try:
             yield
         finally:
+            for task in tasks:
+                task.cancel()
             if on_shutdown is not None:
                 on_shutdown()
 
@@ -179,10 +248,12 @@ def create_app(
             Route("/api/approvals", submit, methods=["POST"]),
             Route("/api/approvals/{id}", status, methods=["GET"]),
             Route("/api/approvals/{id}/expire", expire, methods=["POST"]),
+            Route("/api/agent/events", agent_event, methods=["POST"]),
             Route("/login", login),
             Route("/", index),
             Route("/ui/state", state),
             Route("/ui/approvals/{id}/decide", decide, methods=["POST"]),
+            Route("/ui/kill-switch", kill_switch, methods=["POST"]),
             Route("/ui/stream", stream),
             Mount("/static", StaticFiles(directory=str(static)), name="static"),
         ],
@@ -192,6 +263,17 @@ def create_app(
     app.state.bus = bus
     app.state.config = config
     return app
+
+
+def _switch_state(switch: KillSwitch | None) -> dict[str, Any]:
+    if switch is None:
+        return {"available": False, "engaged": False, "reason": None}
+    reason = switch.reason
+    return {"available": True, "engaged": reason is not None, "reason": reason}
+
+
+def _now() -> int:
+    return int(time.time() * 1000)
 
 
 def _page(message: str) -> str:

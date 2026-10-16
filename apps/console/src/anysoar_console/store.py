@@ -6,12 +6,12 @@ import asyncio
 import contextlib
 import secrets
 import time
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from collections.abc import AsyncIterator
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
-__all__ = ["ApprovalRequest", "ApprovalStore", "EventBus"]
+__all__ = ["ApprovalRequest", "ApprovalStore", "EventBus", "Feed"]
 
 Status = Literal["pending", "approved", "rejected", "expired"]
 
@@ -127,3 +127,19 @@ class ApprovalStore:
         for key in settled[: max(0, len(self._requests) - self._history)]:
             del self._requests[key]
             self._settled.pop(key, None)
+
+
+class Feed:
+    """The most recent events of one kind (agent activity, audit), published as they arrive."""
+
+    def __init__(self, bus: EventBus, kind: str, keep: int = 300) -> None:
+        self._bus = bus
+        self._kind = kind
+        self._items: deque[dict[str, Any]] = deque(maxlen=keep)
+
+    def add(self, item: dict[str, Any]) -> None:
+        self._items.append(item)
+        self._bus.publish(self._kind, item)
+
+    def all(self) -> list[dict[str, Any]]:
+        return list(self._items)
