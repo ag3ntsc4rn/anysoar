@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-16
+
 ### Added
 
 - `anysoar.drivers.thehive`: `TheHiveDriver` for TheHive 5 (`anysoar[thehive]`), configured
@@ -30,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The contract suite runs against a real TheHive with `ANYSOAR_LIVE_THEHIVE=1`, such as
     the local lab in `demo/thehive`, where it creates and deletes synthetic alerts and
     cases and runs the lab's analyzers.
+- `anysoar-mcp --driver thehive` serves a TheHive instance.
 
 ## [0.3.0] - 2026-10-16
 
@@ -170,7 +173,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial package skeleton exposing `anysoar.__version__`, published to reserve the name.
 - Optional extras `mcp` and `shuffle` declared for upcoming features.
 
-[Unreleased]: https://github.com/ag3ntsc4rn/anysoar/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/ag3ntsc4rn/anysoar/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/ag3ntsc4rn/anysoar/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/ag3ntsc4rn/anysoar/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/ag3ntsc4rn/anysoar/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/ag3ntsc4rn/anysoar/compare/v0.1.0...v0.2.0

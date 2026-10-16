@@ -7,8 +7,9 @@
 
 > **Status: pre-alpha.** The OCSF-aligned data model, the driver interface, the policy
 > layer, the MCP server, a reference triage agent, a web console for supervising agents, and
-> three drivers exist: a mock (an in-memory fake SOAR), [Shuffle](https://shuffler.io) and
-> [Tines](https://www.tines.com). Expect breaking changes.
+> four drivers exist: a mock (an in-memory fake SOAR), [Shuffle](https://shuffler.io),
+> [Tines](https://www.tines.com) and [TheHive](https://strangebee.com/thehive/). Expect
+> breaking changes.
 
 ## See it
 
@@ -53,10 +54,12 @@ flowchart LR
     I --> D1["Shuffle driver"]
     I --> D2["Mock driver"]
     I --> D4["Tines driver"]
+    I --> D5["TheHive driver"]
     I --> D3["Your driver"]
     D1 --> S1[("Shuffle")]
     D2 --> S2[("In-memory fake SOAR")]
     D4 --> S4[("Tines")]
+    D5 --> S5[("TheHive + Cortex")]
     D3 --> S3[("Any SOAR")]
 ```
 
@@ -74,6 +77,7 @@ pip install "anysoar[mcp]"      # MCP server (anysoar-mcp)
 pip install "anysoar[testing]"  # driver contract test suite
 pip install "anysoar[shuffle]"  # Shuffle driver
 pip install "anysoar[tines]"    # Tines driver
+pip install "anysoar[thehive]"  # TheHive driver
 ```
 
 ## Use it from an MCP client
@@ -96,7 +100,8 @@ From a checkout, use `"command": "uv"` with
 `"args": ["run", "--directory", "/path/to/anysoar", "anysoar-mcp"]` instead.
 
 The agent gets one tool per SOAR operation plus `describe_soar`. Run `anysoar-mcp --help`
-for options: `--driver` (`mock`, `shuffle` or `tines`), `--policy`, `--audit-log` and `--kill-switch`.
+for options: `--driver` (`mock`, `shuffle`, `thehive` or `tines`), `--policy`,
+`--audit-log` and `--kill-switch`.
 
 ## Guardrails
 
@@ -188,6 +193,26 @@ inputs arrive in the webhook body, with the case under `anysoar.case_uid`. Tag a
 case closed through anysoar gets a `verdict:<name>` tag and a comment giving the verdict.
 Tines Cases is a paid feature: on a free Community Edition tenant anysoar offers the
 playbooks only.
+
+[TheHive](https://strangebee.com/thehive/) is the first real SOAR where the agent's whole
+loop runs: alerts, cases, and indicator enrichment by Cortex analyzers. Run TheHive and Cortex
+locally with [`demo/thehive`](demo/thehive) (Docker), load the phishing scenario, and point
+anysoar at it:
+
+```bash
+demo/thehive/up.sh               # TheHive on http://localhost:9000, Cortex on :9001
+uv run demo/thehive/seed.py      # the scenario's alerts and cases; prints the case numbers
+export THEHIVE_URL=http://127.0.0.1:9000
+export THEHIVE_API_KEY="$(grep ^THEHIVE_API_KEY= demo/thehive/.env.local | cut -d= -f2)"
+uv run anysoar-agent triage <case number> --server-arg=--driver=thehive
+```
+
+Cases are TheHive cases, by number. Closing a case sets one of TheHive's closing statuses,
+which is also its verdict (verdicts TheHive has no status for get a `verdict:<name>` tag),
+and the closing comment becomes the case summary. Enrichment runs every Cortex analyzer for
+the indicator's type on the newest TheHive observable with that value, through TheHive, and
+waits for the reports; TheHive only analyzes indicators on its own alerts and cases. TheHive
+has no playbooks anysoar can run yet.
 
 ## Use it from Python
 

@@ -12,6 +12,18 @@ indicator and report on it. Everything runs natively on Apple Silicon or x86 wit
 ./down.sh --purge     # remove containers, data and .env.local
 ```
 
+Then load anysoar's synthetic phishing scenario (re-running resets it):
+
+```bash
+uv run demo/thehive/seed.py
+```
+
+It creates the mock driver's eight alerts with their indicators, and its three cases, each
+made from its alerts as an analyst would: the first alert becomes the case and the others are
+merged into it. Notes become comments, and the closed case is closed with its verdict. It
+prints the case numbers and the command to let the reference agent triage one. Case numbers
+change on every run: TheHive never reuses them.
+
 `up.sh` prints the web UI addresses, how many days the trial license has left, and the
 `THEHIVE_URL` / `THEHIVE_API_KEY` variables the driver uses. Passwords and API keys are
 random per install and live only in `.env.local`, which is git-ignored.
@@ -56,7 +68,29 @@ On the first run it sets both services up through their APIs, so nothing needs c
 - Cortex accepts basic authentication (`cortex.conf`) so `up.sh` can set it up before any
   API key exists.
 
+## What the driver does with it
+
+`--driver thehive` (or `TheHiveDriver`) reads `THEHIVE_URL` and `THEHIVE_API_KEY`, which
+`up.sh` prints. Alerts and cases are TheHive's; enrichment runs the analyzers above through
+TheHive and waits for their reports, which also appear on the observable in TheHive's UI.
+With documentation addresses, Abuse_Finder fails (whois refuses them) and says so; DShield
+reports them as safe.
+
+The driver's contract tests run against this lab:
+
+```bash
+set -a && source demo/thehive/.env.local && set +a
+THEHIVE_URL=http://127.0.0.1:9000 ANYSOAR_LIVE_THEHIVE=1 uv run pytest packages/anysoar/tests/drivers/thehive
+```
+
+They create synthetic alerts and cases, and delete them afterwards.
+
 ## Notes
+
+- **The service account can delete.** TheHive's built-in `analyst` profile includes deleting
+  cases and alerts. anysoar never deletes anything (the contract tests clean up after
+  themselves), but the API key could. If that matters, give the account a profile without
+  those permissions.
 
 - **Analyzer jobs** exchange files with Cortex through `.cortex-jobs/` (git-ignored), which
   must have the same path inside the Cortex container as on your machine.

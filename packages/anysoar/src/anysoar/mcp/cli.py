@@ -46,9 +46,16 @@ def _tines() -> Driver:
     return TinesDriver()  # configured by TINES_URL, TINES_API_KEY and TINES_TEAM_ID
 
 
+def _thehive() -> Driver:
+    from anysoar.drivers.thehive import TheHiveDriver
+
+    return TheHiveDriver()  # configured by THEHIVE_URL, THEHIVE_API_KEY, THEHIVE_ORGANISATION
+
+
 DRIVERS: dict[str, Callable[[], Driver]] = {
     "mock": MockDriver,
     "shuffle": _shuffle,
+    "thehive": _thehive,
     "tines": _tines,
 }
 """Drivers the command can start, by name. Real SOARs are configured by environment
@@ -99,7 +106,8 @@ def _parser() -> argparse.ArgumentParser:
         "--driver",
         default=env("ANYSOAR_DRIVER", "mock"),
         help=f"SOAR driver to use: {', '.join(sorted(DRIVERS))} (env ANYSOAR_DRIVER; "
-        "default: %(default)s). shuffle reads SHUFFLE_URL and SHUFFLE_API_KEY, tines "
+        "default: %(default)s). shuffle reads SHUFFLE_URL and SHUFFLE_API_KEY, thehive "
+        "THEHIVE_URL, THEHIVE_API_KEY and optionally THEHIVE_ORGANISATION, tines "
         "TINES_URL, TINES_API_KEY and optionally TINES_TEAM_ID. Several, "
         "comma-separated, serve whichever the --soar-switch file names (the first by default)",
     )

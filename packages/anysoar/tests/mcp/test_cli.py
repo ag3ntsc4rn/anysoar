@@ -93,3 +93,10 @@ def test_tines_driver_needs_its_settings(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.delenv("TINES_API_KEY", raising=False)
     with pytest.raises(SystemExit, match=r"cannot start the tines driver: .*TINES_URL"):
         main(["--driver", "tines"])
+
+
+def test_thehive_driver_needs_its_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("THEHIVE_URL", raising=False)
+    monkeypatch.delenv("THEHIVE_API_KEY", raising=False)
+    with pytest.raises(SystemExit, match=r"cannot start the thehive driver: .*THEHIVE_URL"):
+        main(["--driver", "thehive"])
