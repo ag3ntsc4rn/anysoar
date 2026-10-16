@@ -15,7 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   open/closed status and sub-status, and the verdict is kept as a `verdict:<name>` case tag.
   Playbooks are stories enabled for Send to Story, run through their entry webhook and
   finished when they reach an exit action. Stories tagged `anysoar:destructive` are
-  destructive. Built from Tines' API reference and tested against a fake built from it;
+  destructive. On tenants without Tines Cases (such as the free Community Edition),
+  `describe()` reports only the playbook operations. Built from Tines' API reference and tested against a fake built from it;
   the contract suite also runs against a real tenant with `ANYSOAR_LIVE_TINES=1`.
 - `anysoar-mcp --driver tines` serves a Tines tenant.
 

@@ -171,8 +171,8 @@ Shuffle offers fewer operations than the mock (no alerts, no indicator enrichmen
 agent is offered fewer tools and adapts: without reputation data it reports a verdict as
 unconfirmed instead of guessing. Its notes and case closures show up in Shuffle's own UI.
 
-[Tines](https://www.tines.com) works the same way; a free Community Edition tenant is
-enough. Create an API key (Settings, API keys) and point anysoar at your tenant:
+[Tines](https://www.tines.com) works the same way. Create an API key (Settings, API keys)
+and point anysoar at your tenant:
 
 ```bash
 export TINES_URL=https://<your-tenant>.tines.com
@@ -186,6 +186,8 @@ posts to the story's entry webhook and reads its result from the exit action. A 
 inputs arrive in the webhook body, with the case under `anysoar.case_uid`. Tag a story
 `anysoar:destructive` to have the policy layer block it. Tines has no verdict field, so a
 case closed through anysoar gets a `verdict:<name>` tag and a comment giving the verdict.
+Tines Cases is a paid feature: on a free Community Edition tenant anysoar offers the
+playbooks only.
 
 ## Use it from Python
 

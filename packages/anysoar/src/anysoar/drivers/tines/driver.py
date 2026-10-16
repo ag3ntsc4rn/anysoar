@@ -15,6 +15,7 @@ from anysoar.drivers.tines.client import TinesAPIError, TinesClient
 from anysoar.errors import DriverError, NotFoundError
 from anysoar.interface import (
     ActionTier,
+    Capability,
     CaseQuery,
     Driver,
     DriverInfo,
@@ -33,6 +34,10 @@ __all__ = ["DESTRUCTIVE_TAG", "TinesDriver"]
 DESTRUCTIVE_TAG = "anysoar:destructive"
 """Tag a Tines story with this to mark it as a destructive playbook."""
 
+_CASE_CAPABILITIES = frozenset(
+    {Capability.LIST_CASES, Capability.GET_CASE, Capability.ADD_NOTE, Capability.CLOSE_CASE}
+)
+"""What needs Tines Cases, a paid feature that Community Edition tenants lack."""
 _MAX_PER_PAGE = 500
 """The largest page Tines' list endpoints return."""
 _RECENT_ENTRY_EVENTS = 100
@@ -43,7 +48,8 @@ class TinesDriver(Driver):
     """Drives a Tines tenant through its REST API.
 
     Cases are Tines cases (see :mod:`anysoar.drivers.tines.cases`); a case's uid is its
-    case id.
+    case id. Tenants without Tines Cases, such as Community Edition, get playbooks only:
+    :meth:`describe` checks once and leaves the case operations out.
 
     Playbooks are stories with Send to Story enabled, the stories Tines itself offers for
     other stories to call. A run posts to the story's entry webhook: a JSON object of the
@@ -85,11 +91,15 @@ class TinesDriver(Driver):
             raise ValueError(f"team_id must be a Tines team id (a number), not {team!r}")
         self._team = str(team) if team is not None else None
         self._client = TinesClient(base_url, api_key, timeout=timeout, transport=transport)
+        self._has_cases: bool | None = None
 
     async def describe(self) -> DriverInfo:
+        capabilities = self.implemented_capabilities()
+        if not await self._cases_available():
+            capabilities -= _CASE_CAPABILITIES
         return DriverInfo(
             name=self.name,
-            capabilities=self.implemented_capabilities(),
+            capabilities=capabilities,
             driver_version=__version__,
             soar_product="Tines",
         )
@@ -100,21 +110,45 @@ class TinesDriver(Driver):
     def _team_params(self) -> dict[str, str]:
         return {"team_id": self._team} if self._team else {}
 
+    async def _cases_available(self) -> bool:
+        """Whether the tenant has Tines Cases. Assumed so if Tines cannot be asked."""
+        if self._has_cases is None:
+            try:
+                await self._client.request(
+                    "GET", "/api/v2/cases", params={"per_page": "1", **self._team_params()}
+                )
+            except TinesAPIError as exc:
+                if not exc.is_feature_unavailable:
+                    return True  # e.g. a bad key: let the real call report it
+                self._has_cases = False
+            else:
+                self._has_cases = True
+        return self._has_cases
+
+    def _no_cases(self, exc: TinesAPIError, capability: Capability) -> Exception:
+        if exc.is_feature_unavailable:
+            self._has_cases = False
+            return self._unsupported(capability)
+        return exc
+
     # -- Cases ----------------------------------------------------------------------------
 
     async def list_cases(self, query: CaseQuery | None = None) -> Page[IncidentFinding]:
         query = query or CaseQuery()
         page = _page_number(query.cursor)
-        listing = await self._client.request(
-            "GET",
-            "/api/v2/cases",
-            params={
-                "order": "RECENTLY_EDITED",
-                "per_page": str(query.limit),
-                "page": str(page),
-                **self._team_params(),
-            },
-        )
+        try:
+            listing = await self._client.request(
+                "GET",
+                "/api/v2/cases",
+                params={
+                    "order": "RECENTLY_EDITED",
+                    "per_page": str(query.limit),
+                    "page": str(page),
+                    **self._team_params(),
+                },
+            )
+        except TinesAPIError as exc:
+            raise self._no_cases(exc, Capability.LIST_CASES) from exc
         # OCSF statuses come partly from sub-status names, which Tines cannot filter on, so
         # filter here; a page can then hold fewer than ``limit`` cases.
         found = [cases.to_case(c) for c in listing.get("cases") or []]
@@ -125,15 +159,18 @@ class TinesDriver(Driver):
         return Page(items=found, next_cursor=str(next_page) if next_page else None)
 
     async def get_case(self, case_uid: str) -> IncidentFinding:
-        case = await self._case(case_uid)
-        return cases.to_case(case, await self._comments(case_uid))
+        case = await self._case(case_uid, Capability.GET_CASE)
+        comments = await self._comments(case_uid, Capability.GET_CASE)
+        return cases.to_case(case, comments)
 
     async def add_note(self, case_uid: str, note: Note) -> Note:
         body: dict[str, Any] = {"value": note.comment}
         if note.owner and note.owner.email_addr:
             # Tines falls back to the API key's user if this person is not on the team.
             body["author_email"] = note.owner.email_addr
-        created = await self._case_request("POST", case_uid, "/comments", json=body)
+        created = await self._case_request(
+            "POST", case_uid, Capability.ADD_NOTE, "/comments", json=body
+        )
         stored = cases.to_note(created)
         return note.model_copy(
             update={
@@ -146,7 +183,7 @@ class TinesDriver(Driver):
     async def close_case(
         self, case_uid: str, *, verdict_id: VerdictId, comment: str | None = None
     ) -> IncidentFinding:
-        case = await self._case(case_uid)
+        case = await self._case(case_uid, Capability.CLOSE_CASE)
         tag = cases.verdict_tag(verdict_id)
         stale = [
             t for t in cases.tag_names(case) if t.startswith(cases.VERDICT_TAG_PREFIX) and t != tag
@@ -154,25 +191,28 @@ class TinesDriver(Driver):
         update: dict[str, Any] = {"status": "closed", "add_tag_names": [tag]}
         if stale:
             update["remove_tag_names"] = stale
-        await self._case_request("PUT", case_uid, json=update)
+        await self._case_request("PUT", case_uid, Capability.CLOSE_CASE, json=update)
         # Tines has no closing comment; record the verdict and reason as a comment.
         text = f"Closed as {cases.verdict_label(verdict_id)}."
         if comment:
             text = f"{text}\n\n{comment}"
-        await self._case_request("POST", case_uid, "/comments", json={"value": text})
+        await self._case_request(
+            "POST", case_uid, Capability.CLOSE_CASE, "/comments", json={"value": text}
+        )
         return await self.get_case(case_uid)
 
-    async def _case(self, case_uid: str) -> dict[str, Any]:
-        case: dict[str, Any] = await self._case_request("GET", case_uid)
+    async def _case(self, case_uid: str, capability: Capability) -> dict[str, Any]:
+        case: dict[str, Any] = await self._case_request("GET", case_uid, capability)
         return case
 
-    async def _comments(self, case_uid: str) -> list[dict[str, Any]]:
+    async def _comments(self, case_uid: str, capability: Capability) -> list[dict[str, Any]]:
         comments: list[dict[str, Any]] = []
         page: int | None = 1
         while page:
             listing = await self._case_request(
                 "GET",
                 case_uid,
+                capability,
                 "/comments",
                 params={"per_page": str(_MAX_PER_PAGE), "page": str(page)},
             )
@@ -184,6 +224,7 @@ class TinesDriver(Driver):
         self,
         method: str,
         case_uid: str,
+        capability: Capability,
         suffix: str = "",
         *,
         json: Any = None,
@@ -196,6 +237,8 @@ class TinesDriver(Driver):
                 method, f"/api/v2/cases/{case_uid}{suffix}", json=json, params=params
             )
         except TinesAPIError as exc:
+            if exc.is_feature_unavailable:
+                raise self._no_cases(exc, capability) from exc
             raise _not_found_or(exc, "case", case_uid) from exc
 
     # -- Playbooks ------------------------------------------------------------------------

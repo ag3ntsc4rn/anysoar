@@ -30,6 +30,13 @@ class TinesAPIError(DriverError):
         # Tines also answers 404 when the API key may not see the object.
         return self.status == 404
 
+    @property
+    def is_feature_unavailable(self) -> bool:
+        """The tenant's plan lacks the feature, e.g. Cases on Community Edition."""
+        return self.status in (401, 403) and "does not have access to this feature" in (
+            self.reason or ""
+        )
+
 
 class TinesClient:
     """Sends authenticated requests to a Tines tenant and decodes JSON responses.
@@ -87,6 +94,9 @@ class TinesClient:
 
 def _reason(body: Any) -> str | None:
     """The error message in a Tines error body, which comes in a few shapes."""
+    if isinstance(body, list) and body:
+        # e.g. ["This tenant does not have access to this feature"]
+        return "; ".join(str(v) for v in body)
     if not isinstance(body, dict):
         return None
     for key in ("error", "message", "errors"):

@@ -9,8 +9,9 @@ import pytest_asyncio
 
 from anysoar.drivers.tines import TinesDriver
 from anysoar.drivers.tines.client import TinesAPIError
-from anysoar.errors import DriverError, NotFoundError
+from anysoar.errors import CapabilityNotSupportedError, DriverError, NotFoundError
 from anysoar.interface import ActionTier, Capability, PlaybookRunStatus
+from anysoar.models import VerdictId
 from anysoar.testing import DriverContract
 
 from .fake_tines import API_KEY, BASE_URL, WEBHOOK_SECRET, FakeTines
@@ -238,3 +239,49 @@ class TestLiveTinesContract(DriverContract):
         uid = str(case["case_id"])
         yield uid
         await driver._client.request("DELETE", f"/api/v2/cases/{uid}")
+
+
+class TestTenantWithoutCases:
+    """Community Edition tenants have no Tines Cases; the driver offers playbooks only."""
+
+    @pytest.fixture
+    def tines(self) -> FakeTines:
+        return FakeTines(has_cases=False)
+
+    async def test_describe_leaves_cases_out(self, soar: TinesDriver, tines: FakeTines) -> None:
+        info = await soar.describe()
+        assert info.capabilities == {
+            Capability.LIST_PLAYBOOKS,
+            Capability.RUN_PLAYBOOK,
+            Capability.GET_PLAYBOOK_RUN,
+        }
+        asked = len(tines.requests)
+        await soar.describe()
+        assert len(tines.requests) == asked  # checked once
+
+    async def test_case_calls_are_unsupported(self, soar: TinesDriver) -> None:
+        with pytest.raises(CapabilityNotSupportedError) as raised:
+            await soar.list_cases()
+        assert raised.value.capability is Capability.LIST_CASES
+        with pytest.raises(CapabilityNotSupportedError) as raised:
+            await soar.close_case("42", verdict_id=VerdictId.BENIGN)
+        assert raised.value.capability is Capability.CLOSE_CASE
+
+    async def test_playbooks_still_run(self, soar: TinesDriver, tines: FakeTines) -> None:
+        run = await soar.run_playbook(str(tines.block_sender))
+        for _ in range(2):
+            run = await soar.get_playbook_run(run.uid)
+        assert run.status is PlaybookRunStatus.SUCCEEDED
+
+    async def test_other_errors_keep_cases(self) -> None:
+        def handler(request: httpx2.Request) -> httpx2.Response:
+            return httpx2.Response(503, text="down")
+
+        soar = TinesDriver(BASE_URL, API_KEY, transport=httpx2.MockTransport(handler))
+        assert Capability.GET_CASE in (await soar.describe()).capabilities
+
+
+class TestTinesContractWithoutCases(DriverContract):
+    @pytest.fixture
+    def driver(self) -> TinesDriver:
+        return TinesDriver(BASE_URL, API_KEY, transport=FakeTines(has_cases=False).transport())

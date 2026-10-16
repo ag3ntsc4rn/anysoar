@@ -106,6 +106,8 @@ class FakeTines:
     requests: list[httpx2.Request] = field(default_factory=list)
     stalled_stories: set[int] = field(default_factory=set)
     """Stories whose runs never reach their exit action."""
+    has_cases: bool = True
+    """False for a tenant without Tines Cases, such as Community Edition."""
 
     def __post_init__(self) -> None:
         self._ids = itertools.count(1000)
@@ -213,6 +215,9 @@ class FakeTines:
             return _json(401, {"error": "Unauthorized"})
         params = request.url.params
 
+        if path.startswith("/api/v2/cases") and not self.has_cases:
+            # What a Community Edition tenant answers (seen on a real one).
+            return _json(401, ["This tenant does not have access to this feature"])
         if method == "GET" and path == "/api/v2/cases":
             return self._list_cases(params)
         if match := re.fullmatch(r"/api/v2/cases/(\d+)(/comments)?", path):
@@ -250,7 +255,6 @@ class FakeTines:
         return self.cases[case_id] | {"activities": self.comments[case_id][:20]}
 
     def _list_cases(self, params: httpx2.QueryParams) -> httpx2.Response:
-        assert params.get("order") == "RECENTLY_EDITED"
         ordered = sorted(self.cases, key=lambda c: self.cases[c]["updated_at"], reverse=True)
         return _json(200, _paged("cases", [self._case(c) for c in ordered], params))
 

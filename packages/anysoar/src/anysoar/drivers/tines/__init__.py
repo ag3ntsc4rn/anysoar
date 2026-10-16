@@ -5,7 +5,7 @@
     async with TinesDriver("https://example-tenant.tines.com", api_key) as soar:
         cases = await soar.list_cases()
 
-A free Tines Community Edition tenant is enough to try it.
+A free Community Edition tenant runs playbooks; cases need Tines Cases, a paid feature.
 """
 
 from anysoar.drivers.tines.driver import DESTRUCTIVE_TAG, TinesDriver

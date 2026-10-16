@@ -105,6 +105,7 @@ class TestListing:
         assert [c.metadata.uid for c in second.items] == ["41"]
         assert second.next_cursor is None
         assert tines.requests[-1].url.params["page"] == "2"
+        assert tines.requests[-1].url.params["order"] == "RECENTLY_EDITED"
 
     async def test_status_filter(self, soar: TinesDriver) -> None:
         query = CaseQuery(status_ids=frozenset({IncidentFindingStatusId.IN_PROGRESS}))
