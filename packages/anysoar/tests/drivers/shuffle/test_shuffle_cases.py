@@ -3,6 +3,7 @@ import pytest
 from anysoar.drivers.shuffle import ShuffleDriver
 from anysoar.drivers.shuffle.incidents import to_case, verdict_label
 from anysoar.errors import NotFoundError
+from anysoar.interface import CaseQuery
 from anysoar.models import IncidentFindingStatusId, Note, User, VerdictId
 
 from .fake_shuffle import API_KEY, BASE_URL, FakeShuffle, new_incident, ui_incident
@@ -140,3 +141,45 @@ class TestNotFound:
         await soar.get_case(shuffle.resolved_incident)
         lookups = [r for r in shuffle.requests if r.url.path == "/api/v1/users/getinfo"]
         assert len(lookups) == 1
+
+
+class TestListing:
+    async def test_lists_incidents_not_other_entries(
+        self, soar: ShuffleDriver, shuffle: FakeShuffle
+    ) -> None:
+        page = await soar.list_cases()
+        assert {c.metadata.uid for c in page.items} == {
+            shuffle.open_incident,
+            shuffle.resolved_incident,
+        }
+
+    async def test_status_filter_and_paging(
+        self, soar: ShuffleDriver, shuffle: FakeShuffle
+    ) -> None:
+        new = await soar.list_cases(CaseQuery(status_ids=frozenset({IncidentFindingStatusId.NEW})))
+        assert [c.metadata.uid for c in new.items] == [shuffle.open_incident]
+        first = await soar.list_cases(CaseQuery(limit=1))
+        assert first.next_cursor == "1"
+        second = await soar.list_cases(CaseQuery(limit=1, cursor=first.next_cursor))
+        assert second.next_cursor is None
+        assert {first.items[0].metadata.uid, second.items[0].metadata.uid} == {
+            shuffle.open_incident,
+            shuffle.resolved_incident,
+        }
+
+    async def test_skips_unreadable_records(
+        self, soar: ShuffleDriver, shuffle: FakeShuffle
+    ) -> None:
+        category = "shuffle-security_incidents"
+        shuffle.datastore["not-json"] = {"key": "not-json", "category": category, "value": "{"}
+        shuffle.datastore["no-id"] = {"key": "no-id", "category": category, "value": "{}"}
+        uids = {c.metadata.uid for c in (await soar.list_cases()).items}
+        assert uids == {shuffle.open_incident, shuffle.resolved_incident}
+
+    async def test_odd_records_still_list_as_cases(
+        self, soar: ShuffleDriver, shuffle: FakeShuffle
+    ) -> None:
+        # An entry in the incident category with an unknown status is still an incident.
+        shuffle.put("shuffle-security_incidents", {"id": "odd", "status_id": "unknown"})
+        odd = next(c for c in (await soar.list_cases()).items if c.metadata.uid == "odd")
+        assert odd.status_id is IncidentFindingStatusId.OTHER

@@ -37,9 +37,10 @@ from anysoar.errors import (
     NotFoundError,
     PolicyDeniedError,
 )
-from anysoar.interface import ActionTier, AlertQuery, Capability
+from anysoar.interface import ActionTier, AlertQuery, Capability, CaseQuery
 from anysoar.models import (
     DetectionFindingStatusId,
+    IncidentFindingStatusId,
     Note,
     Observable,
     ObservableTypeId,
@@ -85,6 +86,7 @@ Verdict = Literal[
     "duplicate",
 ]
 AlertStatus = Literal["new", "in_progress", "suppressed", "resolved", "archived", "deleted"]
+CaseStatus = Literal["new", "in_progress", "on_hold", "resolved", "closed"]
 Severity = Literal["informational", "low", "medium", "high", "critical", "fatal"]
 IndicatorType = Literal[
     "hostname",
@@ -398,6 +400,44 @@ async def get_alert(
 # -- Cases --------------------------------------------------------------------------------
 
 
+CaseStatusArg = Annotated[
+    list[CaseStatus] | None, Field(description="Only cases with one of these statuses.")
+]
+
+
+def _case_query(status: list[CaseStatus] | None, limit: int, cursor: str | None) -> CaseQuery:
+    return CaseQuery(
+        status_ids=frozenset(IncidentFindingStatusId[s.upper()] for s in status)
+        if status
+        else None,
+        limit=limit,
+        cursor=cursor,
+    )
+
+
+async def _ask_list_cases(
+    ctx: Context[Any, Any],
+    status: CaseStatusArg = None,
+    limit: LimitArg = 20,
+    cursor: CursorArg = None,
+) -> _Question:
+    return await _question(ctx, Capability.LIST_CASES, query=_case_query(status, limit, cursor))
+
+
+async def list_cases(
+    ctx: Context[Any, Any],
+    approval: Annotated[_Answer, Resolve(_ask_list_cases)],
+    status: CaseStatusArg = None,
+    limit: LimitArg = 20,
+    cursor: CursorArg = None,
+) -> dict[str, Any]:
+    """List cases (OCSF Incident Findings), most recently updated first. A case's id is its \
+metadata.uid. Page with next_cursor."""
+    query = _case_query(status, limit, cursor)
+    page = await _run(ctx, approval, lambda: _guard(ctx).list_cases(query))
+    return {"cases": [c.to_ocsf() for c in page.items], "next_cursor": page.next_cursor}
+
+
 async def _ask_get_case(ctx: Context[Any, Any], case_uid: CaseUidArg) -> _Question:
     return await _question(ctx, Capability.GET_CASE, case_uid=case_uid)
 
@@ -590,6 +630,7 @@ async def get_playbook_run(
 _TOOLS: dict[Capability, Callable[..., Awaitable[dict[str, Any]]]] = {
     Capability.LIST_ALERTS: list_alerts,
     Capability.GET_ALERT: get_alert,
+    Capability.LIST_CASES: list_cases,
     Capability.GET_CASE: get_case,
     Capability.ADD_NOTE: add_note,
     Capability.CLOSE_CASE: close_case,

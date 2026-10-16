@@ -72,14 +72,14 @@ def test_partial_driver_passes_with_skips(pytester: pytest.Pytester) -> None:
     )
     outcomes = result.parseoutcomes()
     assert "failed" not in outcomes, result.stdout.str()
-    # 3 discovery tests and 5 alert tests pass; the 11 others skip
-    assert (outcomes["passed"], outcomes["skipped"]) == (8, 11)
+    # 3 discovery tests and 5 alert tests pass; the 14 others skip
+    assert (outcomes["passed"], outcomes["skipped"]) == (8, 14)
     assert "driver does not support get_case" in result.stdout.str()
 
 
 def test_missing_driver_fixture_fails(pytester: pytest.Pytester) -> None:
     result = run_suite(pytester, "class TestNothing(DriverContract): pass\n")
-    result.assert_outcomes(errors=19, failed=0, passed=0)
+    result.assert_outcomes(errors=22, failed=0, passed=0)
     result.stdout.fnmatch_lines(["*must override the 'driver' fixture*"])
 
 

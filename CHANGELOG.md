@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `list_cases`: a new read capability, `Driver.list_cases(CaseQuery)` returning a page of
+  cases (most recently updated first, optionally filtered by status), so agents can find
+  work instead of being handed case ids. Implemented by the mock and Shuffle drivers,
+  guarded by the policy layer, offered as an MCP tool, and covered by the contract suite.
+
 - `anysoar.policy.HttpApprover`: approve actions through an approval service over HTTP, such
   as a web console or a chat bot. A small documented protocol (submit, wait for a decision,
   expire); the client's token can only ask for approval, never decide. Unreachable services

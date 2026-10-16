@@ -197,6 +197,8 @@ class FakeShuffle:
             return self._execute(match.group(1), body)
         if method == "POST" and path == "/api/v1/streams/results":
             return self._results(body)
+        if method == "GET" and re.fullmatch(rf"/api/v1/orgs/{ORG_ID}/list_cache", path):
+            return self._list_cache(request)
         if match := re.fullmatch(r"/api/v1/orgs/([^/]+)/(get_cache|set_cache)", path):
             if match.group(1) != ORG_ID:
                 return _json(401, {"success": False})
@@ -217,6 +219,23 @@ class FakeShuffle:
         self.executions[ex.id] = ex
         return _json(
             200, {"success": True, "execution_id": ex.id, "authorization": ex.authorization}
+        )
+
+    def _list_cache(self, request: httpx2.Request) -> httpx2.Response:
+        # Like Shuffle 2.3.0: the cursor comes back empty even when entries remain.
+        category = request.url.params.get("category")
+        top = int(request.url.params.get("top", "100"))
+        keys = [e for e in self.datastore.values() if e["category"] == category]
+        return _json(
+            200,
+            {
+                "success": True,
+                "amount": min(top, len(keys)),
+                "cursor": "",
+                "total_amount": len(keys),
+                "category": category,
+                "keys": keys[:top],
+            },
         )
 
     def _get_cache(self, body: dict[str, Any]) -> httpx2.Response:

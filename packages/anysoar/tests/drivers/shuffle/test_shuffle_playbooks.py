@@ -47,6 +47,7 @@ class TestConfiguration:
         assert info.name == "shuffle"
         assert info.soar_product == "Shuffle"
         assert info.capabilities == {
+            Capability.LIST_CASES,
             Capability.GET_CASE,
             Capability.ADD_NOTE,
             Capability.CLOSE_CASE,
