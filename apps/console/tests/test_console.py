@@ -11,6 +11,7 @@ from pathlib import Path
 import httpx2
 import pytest
 import uvicorn
+from starlette.testclient import TestClient
 
 from anysoar.drivers.mock import MockDriver
 from anysoar.errors import DenialReason, PolicyDeniedError
@@ -199,8 +200,6 @@ def test_connection_file_is_private(tmp_path: Path) -> None:
 
 
 def test_shutdown_hook_runs_when_the_server_stops() -> None:
-    from starlette.testclient import TestClient
-
     calls: list[str] = []
     with TestClient(
         create_app(on_shutdown=lambda: calls.append("stopped")), base_url="http://127.0.0.1"
