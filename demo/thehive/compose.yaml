@@ -1,0 +1,92 @@
+# A local TheHive with Cortex for developing and demoing anysoar's TheHive driver.
+# Start it with ./up.sh, which generates the secrets this file needs into .env.local and sets
+# up the users, API keys and analyzers.
+#
+# Differences from StrangeBee's own compose files: pinned versions, ports bound to 127.0.0.1
+# only, Elasticsearch not published and with security off, and no Cassandra or Nginx. TheHive
+# keeps its data in its embedded local database (fine for one node) and indexes it in the
+# Elasticsearch that Cortex needs anyway.
+#
+# Cortex mounts the Docker socket: it starts a container for each analyzer run, and its
+# entrypoint hands the socket to its own user. That gives it control of Docker on this
+# machine; use it as a local lab. Analyzer jobs exchange files through a host directory that
+# must have the same path inside Cortex as on the host, which up.sh sets as CORTEX_JOB_DIR.
+
+name: anysoar-thehive
+
+services:
+  elasticsearch:
+    image: elasticsearch:8.19.23
+    hostname: elasticsearch
+    environment:
+      ES_JAVA_OPTS: -Xms1g -Xmx1g
+      bootstrap.memory_lock: "true"
+      cluster.name: anysoar-thehive
+      cluster.routing.allocation.disk.threshold_enabled: "false"
+      discovery.type: single-node
+      http.host: 0.0.0.0
+      thread_pool.search.queue_size: "100000"
+      thread_pool.write.queue_size: "100000"
+      xpack.security.enabled: "false"
+      xpack.ml.enabled: "false"
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 65536, hard: 65536 }
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    networks: [thehive]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s'"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
+
+  thehive:
+    image: strangebee/thehive:${THEHIVE_VERSION:-5.8.1}
+    hostname: thehive
+    ports:
+      - 127.0.0.1:${THEHIVE_PORT:-9000}:9000
+    environment:
+      JAVA_OPTS: -Xms1g -Xmx1g
+      TH_SECRET: ${THEHIVE_SECRET:?run ./up.sh}
+      TH_INDEX_BACKEND: elasticsearch
+      TH_ELASTICSEARCH_HOSTNAMES: elasticsearch
+      # up.sh connects Cortex through TheHive's API once Cortex has an API key for it.
+      TH_NO_CONFIG_CORTEX: "1"
+    volumes:
+      - thehive-data:/data
+    networks: [thehive]
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    restart: unless-stopped
+
+  cortex:
+    image: thehiveproject/cortex:${CORTEX_VERSION:-4.1.0}
+    hostname: cortex
+    ports:
+      - 127.0.0.1:${CORTEX_PORT:-9001}:9001
+    environment:
+      es_uri: http://elasticsearch:9200
+      job_directory: ${CORTEX_JOB_DIR:?run ./up.sh}
+      docker_job_directory: ${CORTEX_JOB_DIR}
+      JAVA_OPTS: -Xms512m -Xmx512m
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${CORTEX_JOB_DIR}:${CORTEX_JOB_DIR}
+      - ./cortex.conf:/etc/cortex/application.conf:ro
+    networks: [thehive]
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  elasticsearch-data:
+  thehive-data:
+
+networks:
+  thehive:
+    name: anysoar-thehive
