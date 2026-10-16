@@ -11,6 +11,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
+from anysoar._extras import missing_extra
+
+try:
+    import mcp  # noqa: F401  (fail early with install advice if the extra is missing)
+except ModuleNotFoundError as exc:
+    raise missing_extra("mcp", exc) from exc
+
 from mcp.server.mcpserver import (
     AcceptedElicitation,
     Context,

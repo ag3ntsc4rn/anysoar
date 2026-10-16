@@ -52,8 +52,8 @@ flowchart LR
 pip install anysoar
 ```
 
-The `0.0.x` releases on PyPI contain only the package skeleton; until the next release, use a
-checkout (`uv sync`). Optional extras:
+That gives you the data model, the driver interface, the policy layer and the mock driver.
+Optional extras add the rest:
 
 ```bash
 pip install "anysoar[mcp]"      # MCP server (anysoar-mcp)
@@ -63,19 +63,22 @@ pip install "anysoar[shuffle]"  # Shuffle driver
 
 ## Use it from an MCP client
 
-`anysoar-mcp` runs the MCP server over stdio. From a checkout, point your MCP client at it,
-for example:
+`anysoar-mcp` runs the MCP server over stdio. Point your MCP client at it, for example with
+[uv](https://docs.astral.sh/uv/) fetching it from PyPI:
 
 ```json
 {
   "mcpServers": {
     "anysoar": {
-      "command": "uv",
-      "args": ["run", "--directory", "/path/to/anysoar", "anysoar-mcp"]
+      "command": "uvx",
+      "args": ["--from", "anysoar[mcp]", "anysoar-mcp"]
     }
   }
 }
 ```
+
+From a checkout, use `"command": "uv"` with
+`"args": ["run", "--directory", "/path/to/anysoar", "anysoar-mcp"]` instead.
 
 The agent gets one tool per SOAR operation plus `describe_soar`. Run `anysoar-mcp --help`
 for options: `--driver` (`mock` or `shuffle`), `--policy`, `--audit-log` and `--kill-switch`.
@@ -138,8 +141,7 @@ unconfirmed instead of guessing. Its notes and case closures show up in Shuffle'
 ## Use it from Python
 
 The mock driver needs no SOAR. It serves a synthetic phishing scenario with alerts, cases,
-enrichment and playbooks. It isn't on PyPI yet, so run it from a checkout (`uv sync`, then
-`uv run python`):
+enrichment and playbooks. After `pip install anysoar`:
 
 ```python
 import asyncio

@@ -4,9 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
-import httpx2
-
+from anysoar._extras import missing_extra
 from anysoar.errors import DriverError
+
+try:
+    import httpx2
+except ModuleNotFoundError as exc:
+    raise missing_extra("shuffle", exc) from exc
 
 __all__ = ["ShuffleAPIError", "ShuffleClient"]
 

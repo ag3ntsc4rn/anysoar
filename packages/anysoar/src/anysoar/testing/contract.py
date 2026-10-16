@@ -28,9 +28,15 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from typing import ClassVar
 
-import pytest
-import pytest_asyncio
 from pydantic import JsonValue
+
+from anysoar._extras import missing_extra
+
+try:
+    import pytest
+    import pytest_asyncio
+except ModuleNotFoundError as exc:
+    raise missing_extra("testing", exc) from exc
 
 from anysoar.errors import CapabilityNotSupportedError, NotFoundError
 from anysoar.interface import (

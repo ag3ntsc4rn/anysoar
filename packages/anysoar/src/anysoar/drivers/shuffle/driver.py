@@ -5,9 +5,8 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import httpx2
 from pydantic import JsonValue
 
 from anysoar import __version__
@@ -23,6 +22,9 @@ from anysoar.interface import (
     PlaybookRunStatus,
 )
 from anysoar.models import IncidentFinding, Note, VerdictId, now_timestamp
+
+if TYPE_CHECKING:
+    import httpx2
 
 __all__ = ["DESTRUCTIVE_TAG", "ShuffleDriver"]
 
