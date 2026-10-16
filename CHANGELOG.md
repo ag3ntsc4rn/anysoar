@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-16
+
 ### Added
 
 - `list_cases`: a new read capability, `Driver.list_cases(CaseQuery)` returning a page of
@@ -17,8 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   agents keep running. A small file names the active SOAR; each call goes to the driver it
   names, and `describe()` reports that driver. `anysoar-mcp --driver mock,shuffle` serves
   several SOARs (switch file `--soar-switch`, default `~/.local/state/anysoar/SOAR`), and the
-  MCP server adds and removes tools within a second of a switch.
-
+  MCP server adds and removes tools within a second of a switch. The active SOAR is
+  reported under the name the switch uses for it.
 - `anysoar.policy.HttpApprover`: approve actions through an approval service over HTTP, such
   as a web console or a chat bot. A small documented protocol (submit, wait for a decision,
   expire); the client's token can only ask for approval, never decide. Unreachable services
@@ -26,6 +28,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `anysoar-mcp --approver http --approval-url URL` (token in `ANYSOAR_APPROVAL_TOKEN`) sends
   approvals to such a service instead of the MCP client; `--approval-timeout` sets how long
   to wait for a decision.
+
+### Changed
+
+- The policy layer checks what the driver supports with `describe()` at the time of each
+  call, not with the driver class, so it honours drivers that narrow their capabilities and
+  drivers whose SOAR changes at runtime. Unsupported calls still fail before any approval.
+
+### Fixed
+
+- Shuffle: comments written on someone's behalf can now be attributed to them and marked as
+  not AI-written (`comment_entry` and `close_record` take `author` and `ai_handled`); the
+  driver's own notes are still marked AI-written.
 
 ## [0.1.0] - 2026-10-16
 
@@ -89,9 +103,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- The policy layer checks what the driver supports with `describe()` at the time of each
-  call, not with the driver class, so it honours drivers that narrow their capabilities and
-  drivers whose SOAR changes at runtime. Unsupported calls still fail before any approval.
 
 - A case's uid is its `metadata.uid`, since an OCSF Incident Finding has no uid of its own.
 - `anysoar-mcp` logs only warnings from the MCP SDK; its own messages stay at info.
@@ -107,6 +118,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial package skeleton exposing `anysoar.__version__`, published to reserve the name.
 - Optional extras `mcp` and `shuffle` declared for upcoming features.
 
-[Unreleased]: https://github.com/ag3ntsc4rn/anysoar/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/ag3ntsc4rn/anysoar/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/ag3ntsc4rn/anysoar/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ag3ntsc4rn/anysoar/compare/v0.0.1...v0.1.0
 [0.0.1]: https://github.com/ag3ntsc4rn/anysoar/releases/tag/v0.0.1
