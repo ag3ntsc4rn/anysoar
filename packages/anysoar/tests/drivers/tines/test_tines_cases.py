@@ -8,6 +8,7 @@ from anysoar.errors import DriverError, NotFoundError
 from anysoar.interface import CaseQuery
 from anysoar.models import IncidentFindingStatusId, Note, SeverityId, User, VerdictId
 
+from .. import NO_WAIT
 from .fake_tines import API_KEY, BASE_URL, FakeTines, tines_case
 
 
@@ -18,7 +19,7 @@ def tines() -> FakeTines:
 
 @pytest.fixture
 def soar(tines: FakeTines) -> TinesDriver:
-    return TinesDriver(BASE_URL, API_KEY, transport=tines.transport())
+    return TinesDriver(BASE_URL, API_KEY, retry=NO_WAIT, transport=tines.transport())
 
 
 class TestReadingTinesCases:
@@ -112,7 +113,9 @@ class TestListing:
         assert [c.metadata.uid for c in (await soar.list_cases(query)).items] == ["43"]
 
     async def test_team(self, tines: FakeTines) -> None:
-        soar = TinesDriver(BASE_URL, API_KEY, team_id=276, transport=tines.transport())
+        soar = TinesDriver(
+            BASE_URL, API_KEY, team_id=276, retry=NO_WAIT, transport=tines.transport()
+        )
         await soar.list_cases()
         assert tines.requests[-1].url.params["team_id"] == "276"
 

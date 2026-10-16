@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The Shuffle, Tines and TheHive drivers retry failed requests when that is safe:
+  rate limits (429) and failed connections for any request, and server errors (500, 502,
+  503, 504) and timeouts for idempotent ones (reads, and writes that overwrite such as
+  Shuffle's record saves or TheHive's queries). Writes that may already have happened,
+  such as adding a comment or running a playbook, are never repeated. Waits back off
+  exponentially with jitter and follow `Retry-After`. Up to three tries by default; each
+  driver takes `retry=Retry(...)` (`anysoar.drivers.Retry`) to change that, and
+  `Retry(attempts=1)` turns it off.
+
+### Fixed
+
+- Findings using OCSF profile attributes (an alert's assignee or verdict, which belong to
+  the `incident` profile) now list the profile in `metadata.profiles` when they are
+  created or changed, not only when serialized, so they equal themselves parsed back from
+  OCSF. The TheHive driver no longer works around this itself.
+
 ## [0.4.0] - 2026-10-16
 
 ### Added

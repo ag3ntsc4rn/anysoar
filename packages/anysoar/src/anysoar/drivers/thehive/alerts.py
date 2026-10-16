@@ -148,7 +148,7 @@ def to_alert(
     status_id = _status(alert)
     closed = alert.get("stage") == "Closed"
     tags = [str(t) for t in alert.get("tags") or []]
-    finding = DetectionFinding(
+    return DetectionFinding(
         activity_id=ActivityId.CLOSE if closed else ActivityId.UPDATE,
         severity_id=SEVERITIES.get(alert.get("severity"), SeverityId.UNKNOWN),  # type: ignore[arg-type]
         status_id=status_id,
@@ -176,10 +176,4 @@ def to_alert(
             if alert.get(k) is not None
         }
         or None,
-    )
-    # Declare the OCSF profiles the alert uses (an assignee or verdict is the incident
-    # profile), as serializing it does.
-    profiles = sorted(finding.ocsf_profiles())
-    return finding.model_copy(
-        update={"metadata": finding.metadata.model_copy(update={"profiles": profiles})}
     )

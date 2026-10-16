@@ -7,6 +7,7 @@ from anysoar.drivers.thehive.enrichment import data_types, reputation
 from anysoar.interface import Capability
 from anysoar.models import Observable, ObservableTypeId, ReputationScoreId
 
+from .. import NO_WAIT
 from .fake_thehive import API_KEY, BASE_URL, FakeTheHive
 
 IP = ObservableTypeId.IP_ADDRESS
@@ -19,7 +20,9 @@ def thehive() -> FakeTheHive:
 
 @pytest.fixture
 def soar(thehive: FakeTheHive) -> TheHiveDriver:
-    return TheHiveDriver(BASE_URL, API_KEY, poll_interval=0, transport=thehive.transport())
+    return TheHiveDriver(
+        BASE_URL, API_KEY, poll_interval=0, retry=NO_WAIT, transport=thehive.transport()
+    )
 
 
 def ip(value: str) -> Observable:
@@ -105,7 +108,12 @@ class TestEnrichment:
     async def test_unfinished_analyzers_are_reported(self, thehive: FakeTheHive) -> None:
         thehive.stalled.add("DShield_lookup_1_0")
         soar = TheHiveDriver(
-            BASE_URL, API_KEY, enrich_timeout=0, poll_interval=0, transport=thehive.transport()
+            BASE_URL,
+            API_KEY,
+            enrich_timeout=0,
+            poll_interval=0,
+            retry=NO_WAIT,
+            transport=thehive.transport(),
         )
         result = await soar.enrich_indicator(ip("198.51.100.23"))
         (stalled,) = [e for e in result.enrichments if e.provider == "DShield_lookup_1_0"]
@@ -126,7 +134,7 @@ class TestAnalyzerDiscovery:
 
     async def test_not_offered_without_cortex(self, thehive: FakeTheHive) -> None:
         thehive.cortex = False
-        soar = TheHiveDriver(BASE_URL, API_KEY, transport=thehive.transport())
+        soar = TheHiveDriver(BASE_URL, API_KEY, retry=NO_WAIT, transport=thehive.transport())
         info = await soar.describe()
         assert Capability.ENRICH_INDICATOR not in info.capabilities
         assert Capability.GET_CASE in info.capabilities
