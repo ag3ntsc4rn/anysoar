@@ -91,6 +91,12 @@ approvals. The SDK seals the state carried between rounds (AES-GCM), so a client
 an earlier answer, but the answer itself always comes from the client. Deployments that cannot
 trust the client should use an out-of-band approver; that is the planned console in phase 6.
 
+**Update (phase 6):** `HttpApprover` sends approval requests to an approval service over
+HTTP ([protocol](../approval-service.md)), and the console in `apps/console` is one. The
+service holds two credentials apart: the token anysoar uses can only *ask*; deciding needs a
+person's session. A compromised or prompt-injected agent that obtains anysoar's token still
+cannot approve its own actions.
+
 The audit log records SOAR data (arguments, summaries), so it is created readable only by the
 current user.
 

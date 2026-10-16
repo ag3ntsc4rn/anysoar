@@ -6,9 +6,9 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
 > **Status: pre-alpha.** The OCSF-aligned data model, the driver interface, the policy
-> layer, the MCP server, a reference triage agent, and two drivers exist: a mock (an
-> in-memory fake SOAR) and [Shuffle](https://shuffler.io), the first real SOAR. Expect
-> breaking changes.
+> layer, the MCP server, a reference triage agent, a web console for supervising agents, and
+> two drivers exist: a mock (an in-memory fake SOAR) and [Shuffle](https://shuffler.io), the
+> first real SOAR. Expect breaking changes.
 
 ## The problem
 
@@ -37,6 +37,7 @@ not rewriting agents.
 flowchart LR
     A["AI agent(s)"] -->|MCP tools| M["anysoar MCP server"]
     M --> P["Policy layer<br/>tiers · approvals · audit log · kill switch"]
+    H["People<br/>(console)"] <-->|approve · reject · stop| P
     P --> I["Driver interface<br/>OCSF-aligned models"]
     I --> D1["Shuffle driver"]
     I --> D2["Mock driver"]
@@ -86,13 +87,15 @@ for options: `--driver` (`mock` or `shuffle`), `--policy`, `--audit-log` and `--
 ## Guardrails
 
 - **Reads** run freely. **Writes** (add a note, close a case, run a playbook) need your
-  approval: your MCP client shows the action and asks you to approve it. Clients without
+  approval: your MCP client shows the action and asks you to approve it, or, with
+  `anysoar-mcp --approver http`, the [console](#supervise-agents-from-a-browser) or any
+  [approval service](docs/approval-service.md) does. Clients without
   [elicitation](https://modelcontextprotocol.io) support can read but not write.
 - **Destructive** playbooks, such as disabling an account, are denied.
 - **Everything is audited** to `~/.local/state/anysoar/audit.jsonl`: each request, its
   policy decision, the approval and the outcome.
-- **Kill switch:** `touch ~/.local/state/anysoar/STOP` denies every operation until you delete
-  the file.
+- **Kill switch:** `touch ~/.local/state/anysoar/STOP` (or **Stop all actions** in the console)
+  denies every operation until you delete the file.
 - Change the defaults with a policy file:
 
   ```toml
@@ -119,6 +122,22 @@ uv run anysoar-agent triage case-0002 --provider demo
 ```
 
 Drop `--provider demo` and set `ANTHROPIC_API_KEY` to let Claude do the triage.
+
+## Supervise agents from a browser
+
+[`apps/console`](apps/console) is a local web console where you approve or reject what
+agents want to do, watch their reasoning as it happens, follow the audit trail, and stop
+everything with one button.
+
+![The anysoar console: an action waiting for approval, decisions with reasons, and the agent's reasoning and tool calls](docs/images/console.png)
+
+```bash
+uv run anysoar-console                               # prints a sign-in link; open it
+uv run anysoar-agent triage case-0002 --console      # in a second terminal
+```
+
+The agent's writes wait in the console until you decide. The agent's side can only *ask*:
+deciding needs the browser session that the printed sign-in link starts.
 
 ## Swap the SOAR underneath
 
@@ -181,14 +200,14 @@ asyncio.run(main())
 4. **Reference agent** (done): an example phishing-triage agent running against the mock
    driver, with pluggable LLM backends.
 5. **Shuffle driver** (done): the first real SOAR, with the agent working unchanged.
-6. **Console**: live agent reasoning and approve/reject for gated actions.
+6. **Console** (done): live agent reasoning and approve/reject for gated actions.
 7. **Demo**: an end-to-end scenario including swapping the SOAR underneath a running agent.
 
 ## Repository layout
 
 ```
 packages/anysoar/   the published Python package
-apps/               example apps (agent, console); never published
+apps/               example apps (reference agent, console); never published
 demo/               demo environment and scenario
 docs/               documentation
 ```
