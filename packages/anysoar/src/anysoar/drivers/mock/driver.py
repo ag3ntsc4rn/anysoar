@@ -11,6 +11,7 @@ from anysoar import __version__
 from anysoar.errors import DriverError, NotFoundError
 from anysoar.interface import (
     AlertQuery,
+    CaseQuery,
     Driver,
     DriverInfo,
     IndicatorEnrichment,
@@ -118,6 +119,21 @@ class MockDriver(Driver):
         return self._alert(alert_uid).model_copy(deep=True)
 
     # -- Cases ----------------------------------------------------------------------------
+
+    async def list_cases(self, query: CaseQuery | None = None) -> Page[IncidentFinding]:
+        query = query or CaseQuery()
+        matches = [
+            c
+            for c in self._cases.values()
+            if query.status_ids is None or c.status_id in query.status_ids
+        ]
+        matches.sort(key=lambda c: (c.time, _case_uid(c)), reverse=True)
+        start = _parse_cursor(query.cursor)
+        end = start + query.limit
+        return Page(
+            items=[c.model_copy(deep=True) for c in matches[start:end]],
+            next_cursor=str(end) if end < len(matches) else None,
+        )
 
     async def get_case(self, case_uid: str) -> IncidentFinding:
         return self._case(case_uid).model_copy(deep=True)

@@ -12,11 +12,13 @@ from pydantic import JsonValue
 from anysoar import __version__
 from anysoar.drivers.shuffle import incidents
 from anysoar.drivers.shuffle.client import ShuffleAPIError, ShuffleClient
-from anysoar.errors import NotFoundError
+from anysoar.errors import DriverError, NotFoundError
 from anysoar.interface import (
     ActionTier,
+    CaseQuery,
     Driver,
     DriverInfo,
+    Page,
     Playbook,
     PlaybookRun,
     PlaybookRunStatus,
@@ -96,6 +98,31 @@ class ShuffleDriver(Driver):
         await self._client.aclose()
 
     # -- Cases ----------------------------------------------------------------------------
+
+    async def list_cases(self, query: CaseQuery | None = None) -> Page[IncidentFinding]:
+        query = query or CaseQuery()
+        org = await self._org_id()
+        # Shuffle returns an empty cursor even when more entries exist, so fetch the whole
+        # category (up to its page limit) and page here.
+        listing = await self._client.request(
+            "GET",
+            f"/api/v1/orgs/{org}/list_cache",
+            params={"category": incidents.CATEGORY, "top": str(_MAX_INCIDENTS)},
+        )
+        cases = []
+        for entry in listing.get("keys") or []:
+            if entry.get("category") != incidents.CATEGORY:
+                continue
+            try:
+                case = incidents.to_case(json.loads(entry["value"]))
+            except (KeyError, TypeError, ValueError):
+                continue  # not an incident record anysoar can read
+            if query.status_ids is None or case.status_id in query.status_ids:
+                cases.append(case)
+        cases.sort(key=lambda c: (c.time, c.metadata.uid or ""), reverse=True)
+        start = _offset(query.cursor)
+        end = start + query.limit
+        return Page(items=cases[start:end], next_cursor=str(end) if end < len(cases) else None)
 
     async def get_case(self, case_uid: str) -> IncidentFinding:
         return incidents.to_case(await self._incident(case_uid))
@@ -198,6 +225,18 @@ class ShuffleDriver(Driver):
         except ShuffleAPIError as exc:
             raise _not_found_or(exc, "playbook run", run_uid) from exc
         return _to_run(execution)
+
+
+_MAX_INCIDENTS = 1000
+"""The most incidents list_cases reads; Shuffle's datastore pages at 1000."""
+
+
+def _offset(cursor: str | None) -> int:
+    if cursor is None:
+        return 0
+    if not cursor.isdigit():
+        raise DriverError(f"invalid cursor {cursor!r}")
+    return int(cursor)
 
 
 def _not_found_or(exc: ShuffleAPIError, kind: str, uid: str) -> Exception:

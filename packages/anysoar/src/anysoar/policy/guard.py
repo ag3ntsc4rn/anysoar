@@ -21,6 +21,7 @@ from anysoar.interface import (
     ActionTier,
     AlertQuery,
     Capability,
+    CaseQuery,
     Driver,
     DriverInfo,
     IndicatorEnrichment,
@@ -137,6 +138,9 @@ class GuardedDriver(Driver):
         )
 
     # -- Cases ----------------------------------------------------------------------------
+
+    async def list_cases(self, query: CaseQuery | None = None) -> Page[IncidentFinding]:
+        return await self._guarded(_list_cases_action(query), lambda: self.driver.list_cases(query))
 
     async def get_case(self, case_uid: str) -> IncidentFinding:
         return await self._guarded(
@@ -381,6 +385,11 @@ def _get_alert_action(alert_uid: str) -> Action:
     return _action(Capability.GET_ALERT, f"Get alert {alert_uid}", {"alert_uid": alert_uid})
 
 
+def _list_cases_action(query: CaseQuery | None = None) -> Action:
+    arguments = (query or CaseQuery()).model_dump(mode="json", exclude_defaults=True)
+    return _action(Capability.LIST_CASES, "List cases", arguments)
+
+
 def _get_case_action(case_uid: str) -> Action:
     return _action(Capability.GET_CASE, f"Get case {case_uid}", {"case_uid": case_uid})
 
@@ -424,6 +433,7 @@ def _get_playbook_run_action(run_uid: str) -> Action:
 _ACTION_BUILDERS: dict[Capability, Callable[..., Action]] = {
     Capability.LIST_ALERTS: _list_alerts_action,
     Capability.GET_ALERT: _get_alert_action,
+    Capability.LIST_CASES: _list_cases_action,
     Capability.GET_CASE: _get_case_action,
     Capability.ADD_NOTE: _add_note_action,
     Capability.CLOSE_CASE: _close_case_action,

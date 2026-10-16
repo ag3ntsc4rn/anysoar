@@ -43,6 +43,7 @@ from anysoar.interface import (
     ActionTier,
     AlertQuery,
     Capability,
+    CaseQuery,
     Driver,
     DriverInfo,
     IndicatorEnrichment,
@@ -81,6 +82,7 @@ def _assert_valid_case(case: object) -> None:
 _UNSUPPORTED_CALLS: dict[Capability, Callable[[Driver], Awaitable[object]]] = {
     Capability.LIST_ALERTS: lambda d: d.list_alerts(),
     Capability.GET_ALERT: lambda d: d.get_alert("x"),
+    Capability.LIST_CASES: lambda d: d.list_cases(),
     Capability.GET_CASE: lambda d: d.get_case("x"),
     Capability.ADD_NOTE: lambda d: d.add_note("x", Note(comment="x")),
     Capability.CLOSE_CASE: lambda d: d.close_case("x", verdict_id=VerdictId.BENIGN),
@@ -263,6 +265,51 @@ class DriverContract:
             await driver.get_alert(self.missing_uid)
 
     # -- Cases ----------------------------------------------------------------------------
+
+    async def all_cases(self, driver: Driver, query: CaseQuery | None = None) -> list[str]:
+        """Uids of every case matching ``query``, following cursors (at most 50 pages)."""
+        query = query or CaseQuery(limit=500)
+        uids: list[str] = []
+        for _ in range(50):
+            page = await driver.list_cases(query)
+            uids += [c.metadata.uid or "" for c in page.items]
+            if page.next_cursor is None:
+                return uids
+            query = query.model_copy(update={"cursor": page.next_cursor})
+        return uids
+
+    async def test_list_cases(self, driver: Driver, info: DriverInfo) -> None:
+        self.require(info, Capability.LIST_CASES)
+        page = await driver.list_cases()
+        for case in page.items:
+            _assert_valid_case(case)
+            assert case.metadata.uid, "a listed case has no metadata.uid"
+        times = [c.time for c in page.items]
+        assert times == sorted(times, reverse=True), "cases are not most recently updated first"
+
+    async def test_list_cases_limit_and_cursor(self, driver: Driver, info: DriverInfo) -> None:
+        self.require(info, Capability.LIST_CASES)
+        everything = await self.all_cases(driver)
+        if len(everything) < 2:
+            pytest.skip("need at least two cases to test paging")
+        first = await driver.list_cases(CaseQuery(limit=1))
+        assert len(first.items) == 1
+        assert first.next_cursor is not None, "more cases exist but next_cursor is None"
+        paged = await self.all_cases(driver, CaseQuery(limit=1))
+        assert len(paged) == len(set(paged)), "paging returned a case twice"
+        assert paged == everything[: len(paged)], "paging and one big page disagree"
+
+    async def test_list_cases_status_filter(self, driver: Driver, info: DriverInfo) -> None:
+        self.require(info, Capability.LIST_CASES)
+        page = await driver.list_cases()
+        if not page.items:
+            pytest.skip("the driver has no cases to test with")
+        sample = page.items[0]
+        matched = (
+            await driver.list_cases(CaseQuery(status_ids=frozenset({sample.status_id})))
+        ).items
+        assert sample.metadata.uid in {c.metadata.uid for c in matched}
+        assert all(c.status_id == sample.status_id for c in matched)
 
     async def test_get_case(self, driver: Driver, info: DriverInfo, case_uid: str) -> None:
         self.require(info, Capability.GET_CASE)

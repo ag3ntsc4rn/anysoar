@@ -58,6 +58,7 @@ operations that SOAR supports.
 |---|---|---|
 | `list_alerts(query)` | read | `Page[DetectionFinding]`, newest first |
 | `get_alert(alert_uid)` | read | `DetectionFinding` |
+| `list_cases(query)` | read | `Page[IncidentFinding]`, most recently updated first |
 | `get_case(case_uid)` | read | `IncidentFinding` |
 | `add_note(case_uid, note)` | write | the stored `Note` |
 | `close_case(case_uid, verdict_id=..., comment=...)` | write | the updated `IncidentFinding` |

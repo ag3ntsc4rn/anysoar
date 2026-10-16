@@ -25,6 +25,7 @@ from anysoar.models import (
     DetectionFindingStatusId,
     Enrichment,
     IncidentFinding,
+    IncidentFindingStatusId,
     Note,
     Observable,
     SeverityId,
@@ -37,6 +38,7 @@ __all__ = [
     "ActionTier",
     "AlertQuery",
     "Capability",
+    "CaseQuery",
     "Driver",
     "DriverInfo",
     "IndicatorEnrichment",
@@ -63,6 +65,7 @@ class Capability(StrEnum):
 
     LIST_ALERTS = "list_alerts"
     GET_ALERT = "get_alert"
+    LIST_CASES = "list_cases"
     GET_CASE = "get_case"
     ADD_NOTE = "add_note"
     ENRICH_INDICATOR = "enrich_indicator"
@@ -81,6 +84,7 @@ CAPABILITY_TIERS: Mapping[Capability, ActionTier] = MappingProxyType(
     {
         Capability.LIST_ALERTS: ActionTier.READ,
         Capability.GET_ALERT: ActionTier.READ,
+        Capability.LIST_CASES: ActionTier.READ,
         Capability.GET_CASE: ActionTier.READ,
         Capability.ADD_NOTE: ActionTier.WRITE,
         Capability.ENRICH_INDICATOR: ActionTier.READ,
@@ -125,6 +129,14 @@ class AlertQuery(_Model):
     """Only alerts created at or after this time."""
     until: Timestamp | None = None
     """Only alerts created before this time."""
+    limit: int = Field(default=50, ge=1, le=500)
+    cursor: str | None = None
+
+
+class CaseQuery(_Model):
+    """Filters for :meth:`Driver.list_cases`. Unset filters match everything."""
+
+    status_ids: frozenset[IncidentFindingStatusId] | None = None
     limit: int = Field(default=50, ge=1, le=500)
     cursor: str | None = None
 
@@ -222,6 +234,10 @@ class Driver:
         raise self._unsupported(Capability.GET_ALERT)
 
     # -- Cases ----------------------------------------------------------------------------
+
+    async def list_cases(self, query: CaseQuery | None = None) -> Page[IncidentFinding]:
+        """List cases, most recently updated (``time``) first."""
+        raise self._unsupported(Capability.LIST_CASES)
 
     async def get_case(self, case_uid: str) -> IncidentFinding:
         """Fetch one case by its uid, which is the case's ``metadata.uid``."""
