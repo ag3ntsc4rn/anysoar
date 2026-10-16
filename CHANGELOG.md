@@ -7,17 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-16
+
 ### Added
 
 - `anysoar.drivers.tines`: `TinesDriver` for the Tines SOAR (`anysoar[tines]`), configured
-  by `TINES_URL`, `TINES_API_KEY` and optionally `TINES_TEAM_ID`. Cases are Tines cases
-  (`list_cases`, `get_case`, `add_note`, `close_case`); OCSF statuses come from Tines'
-  open/closed status and sub-status, and the verdict is kept as a `verdict:<name>` case tag.
-  Playbooks are stories enabled for Send to Story, run through their entry webhook and
-  finished when they reach an exit action. Stories tagged `anysoar:destructive` are
-  destructive. On tenants without Tines Cases (such as the free Community Edition),
-  `describe()` reports only the playbook operations. Built from Tines' API reference and tested against a fake built from it;
-  the contract suite also runs against a real tenant with `ANYSOAR_LIVE_TINES=1`.
+  by `TINES_URL`, `TINES_API_KEY` and optionally `TINES_TEAM_ID`.
+  - Playbooks are stories enabled for Send to Story. A run posts to the story's entry
+    webhook, is found by a run id carried in the request, and finishes when it reaches an
+    exit action, whose output is the run's result; it fails when the story's Send to Story
+    timeout passes. Stories tagged `anysoar:destructive` are destructive. Checked against a
+    real Tines Community Edition tenant.
+  - Cases are Tines cases (`list_cases`, `get_case`, `add_note`, `close_case`). OCSF
+    statuses come from Tines' open/closed status and sub-status; the verdict is kept as a
+    `verdict:<name>` case tag. Tines Cases is a paid feature, so this part is built from
+    Tines' API reference and tested against a fake; on tenants without it (such as the
+    free Community Edition) `describe()` reports only the playbook operations.
+  - The contract suite runs against a real tenant with `ANYSOAR_LIVE_TINES=1`.
 - `anysoar-mcp --driver tines` serves a Tines tenant.
 
 ## [0.2.1] - 2026-10-16
@@ -140,7 +146,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial package skeleton exposing `anysoar.__version__`, published to reserve the name.
 - Optional extras `mcp` and `shuffle` declared for upcoming features.
 
-[Unreleased]: https://github.com/ag3ntsc4rn/anysoar/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/ag3ntsc4rn/anysoar/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/ag3ntsc4rn/anysoar/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/ag3ntsc4rn/anysoar/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/ag3ntsc4rn/anysoar/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ag3ntsc4rn/anysoar/compare/v0.0.1...v0.1.0
