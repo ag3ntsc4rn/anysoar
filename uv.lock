@@ -85,6 +85,9 @@ testing = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
 ]
+thehive = [
+    { name = "httpx2" },
+]
 tines = [
     { name = "httpx2" },
 ]
@@ -92,13 +95,14 @@ tines = [
 [package.metadata]
 requires-dist = [
     { name = "httpx2", marker = "extra == 'shuffle'", specifier = ">=2.13,<3" },
+    { name = "httpx2", marker = "extra == 'thehive'", specifier = ">=2.13,<3" },
     { name = "httpx2", marker = "extra == 'tines'", specifier = ">=2.13,<3" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=2.3" },
     { name = "pydantic", specifier = ">=2.14,<3" },
     { name = "pytest", marker = "extra == 'testing'", specifier = ">=9.1" },
     { name = "pytest-asyncio", marker = "extra == 'testing'", specifier = ">=1.4" },
 ]
-provides-extras = ["mcp", "shuffle", "tines", "testing"]
+provides-extras = ["mcp", "shuffle", "tines", "thehive", "testing"]
 
 [[package]]
 name = "anysoar-agent"

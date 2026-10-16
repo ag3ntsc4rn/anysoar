@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `anysoar.drivers.thehive`: `TheHiveDriver` for TheHive 5 (`anysoar[thehive]`), configured
+  by `THEHIVE_URL`, `THEHIVE_API_KEY` and optionally `THEHIVE_ORGANISATION`.
+  - Alerts are TheHive alerts (`list_alerts`, `get_alert`), the first real SOAR alerts in
+    anysoar. OCSF statuses come from TheHive's alert stages; Ignored alerts are Suppressed,
+    and the FalsePositive and Duplicate statuses set the verdict. Filters, sorting and
+    paging run in TheHive. `get_alert` includes the alert's observables as indicators.
+  - The contract suite runs against a real TheHive with `ANYSOAR_LIVE_THEHIVE=1`, such as
+    the local lab in `demo/thehive`.
+
 ## [0.3.0] - 2026-10-16
 
 ### Added
