@@ -5,31 +5,31 @@ through, you switch the SOAR underneath it from a mock to a real SOAR running lo
 the same running agent carries on without a restart.
 
 ```bash
-demo/run.sh                  # switch to Shuffle; offline: a scripted agent, no API key needed
-demo/run.sh --soar thehive   # switch to TheHive, where the agent also looks up indicators
+demo/run.sh                  # switch to TheHive; offline: a scripted agent, no API key needed
 demo/run.sh --claude         # Claude does the triage (needs ANTHROPIC_API_KEY; cents per case)
+demo/run.sh --soar shuffle   # switch to Shuffle instead
 ```
 
-The real SOAR is either [Shuffle](https://shuffler.io) (the default) or
-[TheHive](https://strangebee.com/thehive/) with Cortex. On TheHive the agent's whole loop
-runs on a real platform: it reads the case, looks its indicators up with Cortex analyzers,
-and writes its note. Shuffle has no alerts or enrichment, so there it only reads and notes.
+The real SOAR is [TheHive](https://strangebee.com/thehive/) with Cortex (the default) or
+[Shuffle](https://shuffler.io). On TheHive the agent's whole loop runs on a real platform:
+it reads the case, looks its indicators up with Cortex analyzers, and writes its note.
+Shuffle is lighter to run but has no alerts or enrichment, so there it only reads and notes.
 
 You need [uv](https://docs.astral.sh/uv/) and Docker (Docker Desktop on a Mac). Give Docker
-at least 4 GB of memory for Shuffle, 6 GB for TheHive. The first run pulls the SOAR's images
-and takes a few minutes; see [shuffle/README.md](shuffle/README.md) or
-[thehive/README.md](thehive/README.md) for what each lab changes on your machine. TheHive
+at least 6 GB of memory for TheHive, or 4 GB for Shuffle. The first run pulls the SOAR's
+images and takes a few minutes; see [thehive/README.md](thehive/README.md) or
+[shuffle/README.md](shuffle/README.md) for what each lab changes on your machine. TheHive
 runs on a two-week trial license; its README says how to reset it.
 
 ## What the script does
 
-1. Starts the [local Shuffle lab](shuffle) with its incident UI, or the
-   [local TheHive lab](thehive) with `--soar thehive`, and loads the synthetic phishing
-   scenario into it: the same cases the mock SOAR has.
+1. Starts the [local TheHive lab](thehive), or the [local Shuffle lab](shuffle) with its
+   incident UI with `--soar shuffle`, and loads the synthetic phishing scenario into it: the
+   same cases the mock SOAR has.
 2. Points anysoar at the mock SOAR.
 3. Starts the console and prints its sign-in link.
 4. Starts the agent with `anysoar-agent watch`: one long-running agent that triages each
-   open case, connected to `anysoar-mcp --driver mock,shuffle` (or `mock,thehive`). Its
+   open case, connected to `anysoar-mcp --driver mock,thehive` (or `mock,shuffle`). Its
    write actions wait for you in the console.
 
 The offline agent is scripted, but it adapts to the SOAR: it reads each case, looks up as
@@ -48,15 +48,15 @@ Press Ctrl-C to stop the agent; the script then stops the console. The lab keeps
    your approval"). Add a reason; it goes into the audit log. Rejected actions never reach
    the SOAR, and the agent carries on.
 3. **Switch the SOAR.** When the status line turns green ("Finished … A good moment to
-   switch the SOAR"), click **shuffle** (or **thehive**) next to *SOAR* in the console header. The agent's next case comes from
-   that SOAR. On Shuffle it has fewer tools (no alerts or indicator enrichment); on TheHive
-   it looks indicators up with Cortex, about 10 seconds each. The audit trail's *SOAR*
-   column shows where each call went.
-4. **See it in the SOAR.** Shuffle's incident UI is at http://localhost:3002 (user `admin`,
-   password in `demo/shuffle/.env.local`), where the agent's notes are marked AI-handled.
-   TheHive is at http://localhost:9000 (user `analyst@anysoar.lab`, password in
-   `demo/thehive/.env.local`): the notes are comments by the `anysoar` service account, and
-   the analyzer reports are on each looked-up observable.
+   switch the SOAR"), click **thehive** (or **shuffle**) next to *SOAR* in the console
+   header. The agent's next case comes from that SOAR. On TheHive it looks indicators up
+   with Cortex, about 10 seconds each; on Shuffle it has fewer tools (no alerts or
+   indicator enrichment). The audit trail's *SOAR* column shows where each call went.
+4. **See it in the SOAR.** TheHive is at http://localhost:9000 (user `analyst@anysoar.lab`,
+   password in `demo/thehive/.env.local`): the notes are comments by the `anysoar` service
+   account, and the analyzer reports are on each looked-up observable. Shuffle's incident
+   UI is at http://localhost:3002 (user `admin`, password in `demo/shuffle/.env.local`),
+   where the agent's notes are marked AI-handled.
 5. **Stop everything** with *Stop all actions*. Every call is denied, reads included, until
    you click *Resume*.
 
