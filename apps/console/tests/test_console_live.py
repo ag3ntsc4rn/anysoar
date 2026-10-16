@@ -27,7 +27,13 @@ class TestAgentActivity:
     async def test_agent_reports_and_people_see_it(self, console: Console) -> None:
         async with console.submitter() as agent:
             for event in (
-                {"kind": "start", "run": "r1", "text": "Triage case-0002"},
+                {
+                    "kind": "start",
+                    "run": "r1",
+                    "text": "Triage case-0002",
+                    "case": "case-0002",
+                    "soar": "mock",
+                },
                 {"kind": "reasoning", "run": "r1", "text": "Sender looks spoofed."},
                 {
                     "kind": "tool_call",
@@ -47,6 +53,8 @@ class TestAgentActivity:
         person = await console.person()
         feed = await wait_for(person, "agent", 4)
         assert [e["kind"] for e in feed] == ["start", "reasoning", "tool_call", "tool_result"]
+        # The page's status line ("Working on case case-0002 on mock") reads these.
+        assert (feed[0]["case"], feed[0]["soar"]) == ("case-0002", "mock")
         assert feed[2]["arguments"] == {"case_uid": "c"}
         assert (feed[3]["ok"], feed[3]["output"]) == (False, "boom")
 

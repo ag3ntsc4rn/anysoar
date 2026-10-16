@@ -148,7 +148,14 @@ def create_app(
         if kind not in AGENT_EVENT_KINDS:
             return JSONResponse({"error": "unknown event kind"}, status_code=400)
         event: dict[str, Any] = {"kind": kind, "time": _now()}
-        for key, limit in (("run", 100), ("text", 20_000), ("tool", 100), ("output", 4_000)):
+        for key, limit in (
+            ("run", 100),
+            ("text", 20_000),
+            ("tool", 100),
+            ("output", 4_000),
+            ("case", 200),
+            ("soar", 100),
+        ):
             value = body.get(key)
             if isinstance(value, str):
                 event[key] = value[:limit]

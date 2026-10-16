@@ -4,6 +4,10 @@
 // "approval" event on /ui/stream, and the page re-renders from `approvals`.
 const approvals = new Map();
 const $ = (id) => document.getElementById(id);
+// What the agent is doing, from its latest start and done events: {phase, case, soar}.
+let agent = null;
+// The SOAR anysoar sends calls to, when the console can switch it.
+let activeSoar = null;
 
 async function call(path, options = {}) {
   const response = await fetch(path, {
@@ -98,6 +102,7 @@ function render() {
   count.textContent = pending.length;
   count.toggleAttribute("data-zero", pending.length === 0);
   document.title = pending.length ? `(${pending.length}) anysoar console` : "anysoar console";
+  showAgentState();
   tick();
 }
 
@@ -140,7 +145,41 @@ function agentItem(event) {
   return li;
 }
 
+function showAgentState() {
+  const el = $("agent-state");
+  el.hidden = agent === null;
+  if (agent === null) return;
+  // Some SOARs' case ids already say "case" (case-0001); others are bare numbers (113).
+  const id = agent.case || "";
+  const subject = !id ? "its case" : /^case\b/i.test(id) ? id : `case ${id}`;
+  const where = agent.soar ? ` on ${agent.soar}` : "";
+  const waiting = [...approvals.values()].some((a) => a.status === "pending");
+  let phase = agent.phase;
+  if (phase === "working" && waiting) phase = "waiting";
+  el.dataset.phase = phase;
+  el.textContent = {
+    working: `Working on ${subject}${where}…`,
+    waiting: `Waiting for your approval (${subject}${where}).`,
+    finished:
+      activeSoar && agent.soar && activeSoar !== agent.soar
+        ? `Finished ${subject}${where}. Its next case comes from ${activeSoar}.`
+        : `Finished ${subject}${where}. A good moment to switch the SOAR.`,
+  }[phase];
+}
+
+function trackAgent(event) {
+  if (event.kind === "start") {
+    agent = { phase: "working", case: event.case, soar: event.soar };
+  } else if (event.kind === "done") {
+    agent = { ...(agent || {}), phase: "finished" };
+  } else if (agent === null) {
+    agent = { phase: "working" };  // joined mid-case
+  }
+  showAgentState();
+}
+
 function addAgent(event) {
+  trackAgent(event);
   const feed = $("agent");
   const atBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 40;
   feed.append(agentItem(event));
@@ -197,6 +236,8 @@ function addAudit(event) {
 function showSoar(state) {
   const group = $("soar");
   group.hidden = !state.available;
+  activeSoar = state.available ? state.active : null;
+  showAgentState();
   if (!state.available) return;
   const label = group.querySelector(".soar-label");
   group.replaceChildren(label);

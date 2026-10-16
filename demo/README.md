@@ -42,11 +42,13 @@ Press Ctrl-C to stop the agent; the script then stops the console. The lab keeps
 ## Walkthrough
 
 1. **Open the console** with the printed sign-in link. The agent starts on the mock SOAR:
-   its reasoning and tool calls appear in the *Agent* panel.
-2. **Approve or reject** each action it asks for. Add a reason; it goes into the audit log.
-   Rejected actions never reach the SOAR, and the agent carries on.
-3. **Switch the SOAR.** When the agent panel shows *Finished* for a case, click **shuffle**
-   (or **thehive**) next to *SOAR* in the console header. The agent's next case comes from
+   its reasoning and tool calls appear in the *Agent* panel, under a status line saying
+   what it is doing ("Working on case-0001 on mock…").
+2. **Approve or reject** each action it asks for (the status line turns amber, "Waiting for
+   your approval"). Add a reason; it goes into the audit log. Rejected actions never reach
+   the SOAR, and the agent carries on.
+3. **Switch the SOAR.** When the status line turns green ("Finished … A good moment to
+   switch the SOAR"), click **shuffle** (or **thehive**) next to *SOAR* in the console header. The agent's next case comes from
    that SOAR. On Shuffle it has fewer tools (no alerts or indicator enrichment); on TheHive
    it looks indicators up with Cortex, about 10 seconds each. The audit trail's *SOAR*
    column shows where each call went.
