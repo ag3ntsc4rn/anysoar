@@ -53,3 +53,12 @@ def test_ids_are_stable_and_closed_case_uses_shuffle_numbering() -> None:
     record = lab.to_record(closed)
     assert (record["status_id"], record["status"]) == (4, "Closed")
     assert record["activity"][-2]["content"] == "Closed: True Positive"
+
+
+def test_seeded_notes_are_not_marked_as_ai() -> None:
+    lab = load_seed_script()
+    for case in seed.build_cases(seed.build_alerts()):
+        record = lab.to_record(case)
+        comments = [a for a in record["activity"] if a["type"] == "comment"]
+        assert all(a["ai_handled"] is False for a in comments)
+        assert all(a["user"] != "anysoar" for a in record["activity"])

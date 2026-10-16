@@ -101,6 +101,7 @@ def to_record(case: IncidentFinding) -> dict[str, Any]:
                 n.comment,
                 n.created_time or case.time,
                 author=n.owner.name if n.owner and n.owner.name else "anysoar",
+                ai_handled=False,  # the scenario's notes are written by people
             )
             for n in case.notes
         ],
@@ -108,7 +109,15 @@ def to_record(case: IncidentFinding) -> dict[str, Any]:
         "metadata": {"extensions": {"custom_attributes": {"anysoar_scenario": "phishing"}}},
     }
     if case.status_id is IncidentFindingStatusId.CLOSED and case.verdict_id is not None:
-        record = close_record(record, case.verdict_id, case.comment, case.end_time or case.time)
+        closer = case.assignee.name if case.assignee and case.assignee.name else "anysoar"
+        record = close_record(
+            record,
+            case.verdict_id,
+            case.comment,
+            case.end_time or case.time,
+            author=closer,
+            ai_handled=False,
+        )
     return record
 
 
