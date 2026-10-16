@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `anysoar.policy.HttpApprover`: approve actions through an approval service over HTTP, such
+  as a web console or a chat bot. A small documented protocol (submit, wait for a decision,
+  expire); the client's token can only ask for approval, never decide. Unreachable services
+  and rejected tokens deny the action. Standard library only.
+- `anysoar-mcp --approver http --approval-url URL` (token in `ANYSOAR_APPROVAL_TOKEN`) sends
+  approvals to such a service instead of the MCP client; `--approval-timeout` sets how long
+  to wait for a decision.
+
 ## [0.1.0] - 2026-10-16
 
 ### Added

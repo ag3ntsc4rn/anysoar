@@ -20,7 +20,9 @@ from anysoar.drivers.mock import MockDriver
 from anysoar.interface import Driver
 from anysoar.policy import (
     DEFAULT_TIER_DECISIONS,
+    Approver,
     GuardedDriver,
+    HttpApprover,
     JsonlAuditLog,
     KillSwitch,
     Policy,
@@ -108,25 +110,59 @@ def _parser() -> argparse.ArgumentParser:
         help="while this file exists, every operation is denied "
         "(env ANYSOAR_KILL_SWITCH; default: %(default)s)",
     )
+    parser.add_argument(
+        "--approver",
+        choices=["client", "http"],
+        default=env("ANYSOAR_APPROVER", "client"),
+        help="who approves write actions: 'client' asks the user in their MCP client; "
+        "'http' asks an approval service such as the anysoar console, at --approval-url "
+        "with the token in ANYSOAR_APPROVAL_TOKEN (env ANYSOAR_APPROVER; default: %(default)s)",
+    )
+    parser.add_argument(
+        "--approval-url",
+        default=env("ANYSOAR_APPROVAL_URL"),
+        help="approval service address for --approver http (env ANYSOAR_APPROVAL_URL)",
+    )
+    parser.add_argument(
+        "--approval-timeout",
+        type=float,
+        default=float(env("ANYSOAR_APPROVAL_TIMEOUT", "300")),
+        help="seconds to wait for a decision before denying (default: %(default)g)",
+    )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser
 
 
-async def _serve(args: argparse.Namespace, policy: Policy, driver: Driver) -> None:
-    from anysoar.mcp.server import ElicitationApprover, create_server
+def _approver(args: argparse.Namespace) -> Approver:
+    if args.approver == "client":
+        from anysoar.mcp.server import ElicitationApprover
+
+        return ElicitationApprover()
+    token = os.environ.get("ANYSOAR_APPROVAL_TOKEN")
+    if not args.approval_url or not token:
+        sys.exit("anysoar-mcp: --approver http needs --approval-url and ANYSOAR_APPROVAL_TOKEN")
+    return HttpApprover(args.approval_url, token)
+
+
+async def _serve(
+    args: argparse.Namespace, policy: Policy, driver: Driver, approver: Approver
+) -> None:
+    from anysoar.mcp.server import create_server
 
     guard = GuardedDriver(
         driver,
         policy=policy,
-        approver=ElicitationApprover(),
+        approver=approver,
+        approval_timeout=args.approval_timeout,
         audit_log=JsonlAuditLog(args.audit_log),
         kill_switch=KillSwitch(args.kill_switch),
     )
     async with guard:
         server = await create_server(guard)
         logger.info(
-            "serving driver %r; audit log %s; kill switch file %s",
+            "serving driver %r; approvals by %s; audit log %s; kill switch file %s",
             args.driver,
+            args.approval_url if args.approver == "http" else "the MCP client",
             args.audit_log,
             args.kill_switch,
         )
@@ -145,9 +181,10 @@ def main(argv: Sequence[str] | None = None) -> None:
     except (OSError, ValueError, tomllib.TOMLDecodeError) as exc:
         detail = str(exc) if not isinstance(exc, ValidationError) else f"\n{exc}"
         sys.exit(f"anysoar-mcp: invalid policy {args.policy}: {detail}")
+    approver = _approver(args)
     try:
         driver = DRIVERS[args.driver]()
     except ValueError as exc:
         sys.exit(f"anysoar-mcp: cannot start the {args.driver} driver: {exc}")
     with contextlib.suppress(KeyboardInterrupt):
-        asyncio.run(_serve(args, policy, driver))
+        asyncio.run(_serve(args, policy, driver, approver))
