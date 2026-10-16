@@ -11,6 +11,7 @@ resolution-markers = [
 members = [
     "anysoar",
     "anysoar-agent",
+    "anysoar-console",
 ]
 
 [manifest.dependency-groups]
@@ -114,6 +115,25 @@ requires-dist = [
     { name = "anysoar", extras = ["mcp"], editable = "packages/anysoar" },
 ]
 provides-extras = ["claude"]
+
+[[package]]
+name = "anysoar-console"
+version = "0.0.0"
+source = { editable = "apps/console" }
+dependencies = [
+    { name = "anysoar", extra = ["mcp"] },
+    { name = "sse-starlette" },
+    { name = "starlette" },
+    { name = "uvicorn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "anysoar", extras = ["mcp"], editable = "packages/anysoar" },
+    { name = "sse-starlette", specifier = ">=3.5" },
+    { name = "starlette", specifier = ">=1.8" },
+    { name = "uvicorn", specifier = ">=0.54" },
+]
 
 [[package]]
 name = "ast-serialize"

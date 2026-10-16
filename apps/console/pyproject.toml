@@ -1,0 +1,21 @@
+[project]
+name = "anysoar-console"
+version = "0.0.0"
+description = "Local web console for anysoar: approve agents' actions and watch them work. An example app; not published."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+authors = [{ name = "ag3ntsc4rn" }]
+classifiers = ["Private :: Do Not Upload"]
+# Starlette, uvicorn and sse-starlette come with the MCP SDK; listed for clarity.
+dependencies = ["anysoar[mcp]", "starlette>=1.8", "uvicorn>=0.54", "sse-starlette>=3.5"]
+
+[project.scripts]
+anysoar-console = "anysoar_console.cli:main"
+
+[tool.uv.sources]
+anysoar = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.13.1,<0.14"]
+build-backend = "uv_build"

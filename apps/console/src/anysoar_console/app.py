@@ -1,0 +1,202 @@
+"""The console web app: an approval service for anysoar and a live view for people.
+
+Two kinds of callers, with separate credentials:
+
+- **anysoar** (``anysoar-mcp --approver http``) submits approval requests with the *submit
+  token* (``Authorization: Bearer``), following :mod:`anysoar.policy.http_approver`. It can
+  ask, never decide.
+- **People** sign in by opening the one-time-printed login link, which sets a session
+  cookie. Only a session can decide. Browser writes also need the ``X-Anysoar-Console``
+  header, which other sites cannot send without a CORS preflight this app never allows.
+
+The app listens on localhost only and rejects other Host headers (DNS rebinding).
+"""
+
+from __future__ import annotations
+
+import contextlib
+import hmac
+import json
+import secrets
+from collections.abc import AsyncIterator, Callable
+from dataclasses import dataclass, field
+from importlib.resources import files
+
+from sse_starlette.sse import EventSourceResponse
+from starlette.applications import Starlette
+from starlette.middleware import Middleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
+from starlette.requests import Request
+from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from starlette.routing import Mount, Route
+from starlette.staticfiles import StaticFiles
+
+from anysoar_console.store import ApprovalStore, EventBus
+
+__all__ = ["ConsoleConfig", "create_app"]
+
+SESSION_COOKIE = "anysoar_console"
+CSRF_HEADER = "X-Anysoar-Console"
+MAX_WAIT = 30.0
+
+
+@dataclass
+class ConsoleConfig:
+    operator: str = "console"
+    """Recorded as the approver of decisions made in this console."""
+    submit_token: str = field(default_factory=lambda: secrets.token_urlsafe(32))
+    login_token: str = field(default_factory=lambda: secrets.token_urlsafe(32))
+    allowed_hosts: tuple[str, ...] = ("127.0.0.1", "localhost")
+
+
+def _same(secret: str, candidate: str | None) -> bool:
+    return candidate is not None and hmac.compare_digest(secret.encode(), candidate.encode())
+
+
+def create_app(
+    config: ConsoleConfig | None = None, *, on_shutdown: Callable[[], None] | None = None
+) -> Starlette:
+    """The console app. ``on_shutdown`` runs when the server stops, signals included."""
+    config = config or ConsoleConfig()
+    bus = EventBus()
+    store = ApprovalStore(bus)
+    sessions: set[str] = set()
+    static = files("anysoar_console") / "static"
+
+    def submitter(request: Request) -> bool:
+        header = request.headers.get("Authorization", "")
+        return _same(config.submit_token, header.removeprefix("Bearer ").strip() or None)
+
+    def person(request: Request, *, writing: bool = False) -> bool:
+        session = request.cookies.get(SESSION_COOKIE)
+        signed_in = session is not None and any(_same(s, session) for s in sessions)
+        return signed_in and (not writing or request.headers.get(CSRF_HEADER) == "1")
+
+    denied = JSONResponse({"error": "not authorized"}, status_code=401)
+
+    # -- Approval service (anysoar) --------------------------------------------------------
+
+    async def submit(request: Request) -> Response:
+        if not submitter(request):
+            return denied
+        body = await request.json()
+        action = body.get("action")
+        if not isinstance(action, dict) or not isinstance(action.get("summary"), str):
+            return JSONResponse({"error": "action with a summary is required"}, status_code=400)
+        actor = body.get("actor")
+        approval = store.submit(action, actor if isinstance(actor, str) else None)
+        return JSONResponse({"id": approval.id}, status_code=201)
+
+    async def status(request: Request) -> Response:
+        if not submitter(request):
+            return denied
+        try:
+            wait = min(max(float(request.query_params.get("wait", "0")), 0.0), MAX_WAIT)
+        except ValueError:
+            wait = 0.0
+        approval = await store.wait(request.path_params["id"], wait)
+        if approval is None:
+            return JSONResponse({"error": "no such approval"}, status_code=404)
+        return JSONResponse(
+            {"status": approval.status, "approver": approval.approver, "reason": approval.reason}
+        )
+
+    async def expire(request: Request) -> Response:
+        if not submitter(request):
+            return denied
+        approval = store.expire(request.path_params["id"])
+        if approval is None:
+            return JSONResponse({"error": "no such approval"}, status_code=404)
+        return JSONResponse({"status": approval.status})
+
+    # -- People -----------------------------------------------------------------------------
+
+    async def login(request: Request) -> Response:
+        if not _same(config.login_token, request.query_params.get("token")):
+            return HTMLResponse(
+                _page("Sign-in link not valid. Use the link the console printed."), 401
+            )
+        session = secrets.token_urlsafe(32)
+        sessions.add(session)
+        response = RedirectResponse("/", status_code=303)
+        response.set_cookie(SESSION_COOKIE, session, httponly=True, samesite="strict")
+        return response
+
+    async def index(request: Request) -> Response:
+        if not person(request):
+            return HTMLResponse(_page("Open the sign-in link printed by anysoar-console."), 401)
+        return HTMLResponse((static / "index.html").read_text())
+
+    async def state(request: Request) -> Response:
+        if not person(request):
+            return denied
+        return JSONResponse(
+            {"operator": config.operator, "approvals": [a.public() for a in store.all()]}
+        )
+
+    async def decide(request: Request) -> Response:
+        if not person(request, writing=True):
+            return denied
+        body = await request.json()
+        decision = body.get("decision")
+        if decision not in ("approve", "reject"):
+            return JSONResponse({"error": "decision must be approve or reject"}, status_code=400)
+        reason = body.get("reason")
+        try:
+            approval = store.decide(
+                request.path_params["id"],
+                approved=decision == "approve",
+                approver=config.operator,
+                reason=reason.strip() if isinstance(reason, str) else None,
+            )
+        except LookupError:
+            return JSONResponse({"error": "no such approval"}, status_code=404)
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=409)
+        return JSONResponse(approval.public())
+
+    async def stream(request: Request) -> Response:
+        if not person(request):
+            return denied
+
+        async def events() -> AsyncIterator[dict[str, str]]:
+            async for event in bus.subscribe():
+                yield {"event": event["kind"], "data": json.dumps(event)}
+
+        return EventSourceResponse(events(), ping=15)
+
+    @contextlib.asynccontextmanager
+    async def lifespan(_: Starlette) -> AsyncIterator[None]:
+        try:
+            yield
+        finally:
+            if on_shutdown is not None:
+                on_shutdown()
+
+    app = Starlette(
+        lifespan=lifespan,
+        routes=[
+            Route("/api/approvals", submit, methods=["POST"]),
+            Route("/api/approvals/{id}", status, methods=["GET"]),
+            Route("/api/approvals/{id}/expire", expire, methods=["POST"]),
+            Route("/login", login),
+            Route("/", index),
+            Route("/ui/state", state),
+            Route("/ui/approvals/{id}/decide", decide, methods=["POST"]),
+            Route("/ui/stream", stream),
+            Mount("/static", StaticFiles(directory=str(static)), name="static"),
+        ],
+        middleware=[Middleware(TrustedHostMiddleware, allowed_hosts=list(config.allowed_hosts))],
+    )
+    app.state.store = store
+    app.state.bus = bus
+    app.state.config = config
+    return app
+
+
+def _page(message: str) -> str:
+    return (
+        "<!doctype html><meta charset=utf-8><title>anysoar console</title>"
+        "<body style='font:16px system-ui;margin:3rem'>"
+        f"<h1>anysoar console</h1><p>{message}</p></body>"
+    )
