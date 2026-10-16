@@ -2,9 +2,9 @@
 # The anysoar demo: an AI agent triages phishing cases on one SOAR, you approve its actions
 # in the console, then you switch the SOAR to a real one and the same running agent carries on.
 #
-#   demo/run.sh                  # offline: a scripted agent, no API key needed
+#   demo/run.sh                  # switch to TheHive with Cortex; a scripted agent, no API key
 #   demo/run.sh --claude         # Claude does the triage (needs ANTHROPIC_API_KEY)
-#   demo/run.sh --soar thehive   # switch to TheHive with Cortex instead of Shuffle
+#   demo/run.sh --soar shuffle   # switch to Shuffle instead (lighter; no alerts or enrichment)
 #
 # Any other arguments are passed to `anysoar-agent watch`, e.g. --max-cases 4.
 set -euo pipefail
@@ -12,7 +12,7 @@ repo="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$repo"
 
 provider=(--provider demo)
-soar=shuffle
+soar=thehive
 while [[ $# -gt 0 ]]; do
   case $1 in
     --claude)

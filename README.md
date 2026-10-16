@@ -18,10 +18,11 @@ demo/run.sh
 ```
 
 An agent triages phishing cases while you approve its actions in a browser, and halfway
-through you switch the SOAR underneath it, from a mock to a real Shuffle, without
-restarting it. `demo/run.sh --soar thehive` switches to TheHive instead, where the agent also
-looks indicators up with Cortex. Needs [uv](https://docs.astral.sh/uv/) and Docker; no API
-key. See [demo/README.md](demo/README.md).
+through you switch the SOAR underneath it, from a mock to a real TheHive with Cortex,
+without restarting it: the same agent reads cases, looks their indicators up and writes its
+notes there. `demo/run.sh --soar shuffle` switches to Shuffle instead. Needs
+[uv](https://docs.astral.sh/uv/) and Docker; no API key. See
+[demo/README.md](demo/README.md).
 
 ## The problem
 
