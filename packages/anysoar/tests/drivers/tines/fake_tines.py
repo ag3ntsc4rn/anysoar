@@ -308,7 +308,7 @@ class FakeTines:
                 payload = {"exit": {"blocked": True, "sender": (run.body or {}).get("sender")}}
                 if params.get("exclude_previous_event_payloads") != "true":
                     payload = {"webhook": {"body": run.body}, **payload}
-                events.append(self._event(run.exit_event, action_id, run, payload))
+                events.append(self._event(run.exit_event, action_id, run, payload, at=1))
         if since := params.get("since_id"):
             events = [e for e in events if e["id"] > int(since)]
         if until := params.get("until_id"):
@@ -330,13 +330,15 @@ class FakeTines:
         return _json(200, _paged("story_run_events", events, params))
 
     @staticmethod
-    def _event(event_id: int, action_id: int, run: Run, payload: Any) -> dict[str, Any]:
+    def _event(
+        event_id: int, action_id: int, run: Run, payload: Any, *, at: int = 0
+    ) -> dict[str, Any]:
         return {
             "id": event_id,
             "agent_id": action_id,
             "payload": payload,
-            "created_at": run.at(0),
-            "updated_at": run.at(0),
+            "created_at": run.at(at),
+            "updated_at": run.at(at),
             "story_run_guid": run.guid,
             "previous_events_ids": [],
             "re_emitted": False,

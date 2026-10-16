@@ -110,9 +110,7 @@ class TestPlaybooks:
         assert done.ended_time is not None and done.started_time is not None
         assert done.ended_time - done.started_time == 1000
         # The exit action's own output, without the upstream webhook payload.
-        assert done.outputs == {
-            "result": {"exit": {"blocked": True, "sender": "it-support@example.net"}}
-        }
+        assert done.outputs == {"result": {"blocked": True, "sender": "it-support@example.net"}}
 
     async def test_run_not_yet_received_is_queued(
         self, soar: TinesDriver, tines: FakeTines
@@ -126,7 +124,7 @@ class TestPlaybooks:
         await soar.run_playbook(str(tines.block_sender), inputs={"sender": "b@example.net"})
         for _ in range(3):
             polled = await soar.get_playbook_run(first.uid)
-        assert polled.outputs == {"result": {"exit": {"blocked": True, "sender": "a@example.net"}}}
+        assert polled.outputs == {"result": {"blocked": True, "sender": "a@example.net"}}
 
     async def test_webhook_without_secret_uses_the_api_key(
         self, soar: TinesDriver, tines: FakeTines
@@ -226,6 +224,8 @@ class TestLiveTinesContract(DriverContract):
     @pytest_asyncio.fixture
     async def case_uid(self, driver: TinesDriver) -> AsyncIterator[str]:
         """A synthetic case created for the test and deleted afterwards."""
+        if Capability.GET_CASE not in (await driver.describe()).capabilities:
+            pytest.skip("this tenant has no Tines Cases (e.g. Community Edition)")
         case = await driver._client.request(
             "POST",
             "/api/v2/cases",

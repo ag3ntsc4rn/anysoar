@@ -349,11 +349,16 @@ class TinesDriver(Driver):
                 None,
             )
         if finished is not None:
+            emitted = await self._exit_event(finished)
+            # Run events give whole seconds; the exit event itself has milliseconds.
+            ended = cases.timestamp((emitted or finished).get("created_at"))
+            if ended is not None and started_time is not None:
+                ended = max(ended, started_time)
             return run.model_copy(
                 update={
                     "status": PlaybookRunStatus.SUCCEEDED,
-                    "ended_time": cases.timestamp(finished.get("created_at")),
-                    "outputs": {"result": await self._event_output(finished)},
+                    "ended_time": ended,
+                    "outputs": {"result": _exit_output(emitted)},
                 }
             )
         limit = story.get("send_to_story_timeout_duration_seconds")
@@ -383,8 +388,8 @@ class TinesDriver(Driver):
             raise NotFoundError(kind, uid)
         return story
 
-    async def _event_output(self, event: dict[str, Any]) -> JsonValue:
-        """The payload the exit action emitted, without its upstream events' payloads."""
+    async def _exit_event(self, event: dict[str, Any]) -> dict[str, Any] | None:
+        """The event the exit action emitted, without its upstream events' payloads."""
         event_id = int(event["id"])
         listing = await self._client.request(
             "GET",
@@ -398,8 +403,8 @@ class TinesDriver(Driver):
         )
         for emitted in listing.get("events") or []:
             if emitted.get("id") == event_id:
-                payload: JsonValue = emitted.get("payload")
-                return payload
+                found: dict[str, Any] = emitted
+                return found
         return None
 
 
@@ -430,6 +435,15 @@ def _exit_action_ids(story: dict[str, Any]) -> set[int]:
     ids = [e.get("id") if isinstance(e, dict) else e for e in exits]
     ids += story.get("exit_agent_ids") or []
     return {int(i) for i in ids if isinstance(i, int | str) and str(i).isdigit()}
+
+
+def _exit_output(event: dict[str, Any] | None) -> JsonValue:
+    """What the exit action emitted. Tines keys an event's payload by the action's name,
+    e.g. ``{"exit": {"ok": true}}``; the run's result is the value under that name."""
+    payload: JsonValue = (event or {}).get("payload")
+    if isinstance(payload, dict) and len(payload) == 1:
+        (payload,) = payload.values()
+    return payload
 
 
 def _carries(payload: Any, token: str, depth: int = 4) -> bool:
