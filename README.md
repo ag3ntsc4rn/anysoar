@@ -10,6 +10,17 @@
 > two drivers exist: a mock (an in-memory fake SOAR) and [Shuffle](https://shuffler.io), the
 > first real SOAR. Expect breaking changes.
 
+## See it
+
+```bash
+demo/run.sh
+```
+
+An agent triages phishing cases while you approve its actions in a browser, and halfway
+through you switch the SOAR underneath it, from a mock to a real Shuffle, without
+restarting it. Needs [uv](https://docs.astral.sh/uv/) and Docker; no API key. See
+[demo/README.md](demo/README.md).
+
 ## The problem
 
 Security teams increasingly want to bring their own AI agents into the SOC: to triage alerts,
@@ -201,7 +212,8 @@ asyncio.run(main())
    driver, with pluggable LLM backends.
 5. **Shuffle driver** (done): the first real SOAR, with the agent working unchanged.
 6. **Console** (done): live agent reasoning and approve/reject for gated actions.
-7. **Demo**: an end-to-end scenario including swapping the SOAR underneath a running agent.
+7. **Demo** (done): an end-to-end scenario including swapping the SOAR underneath a running
+   agent.
 
 ## Repository layout
 

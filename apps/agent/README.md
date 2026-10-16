@@ -66,6 +66,21 @@ The agent's writes wait in the console for your decision instead of this termina
 reasoning and tool calls appear there as it works. If the console stops responding, the agent
 warns once and carries on; approvals then fail safe and are denied.
 
+## Keep going: watch mode
+
+`anysoar-agent watch` keeps one agent running: it triages each open case, then waits for
+more. Before each case it checks which SOAR is active, so if you switch the SOAR behind
+anysoar (`anysoar-mcp --driver mock,shuffle`, and the console's SOAR switch), its next case
+and its tools come from the new SOAR without a restart.
+
+```bash
+uv run anysoar-agent watch --console --server-arg=--driver=mock,shuffle
+uv run anysoar-agent watch --provider demo --max-cases 2     # offline, any SOAR
+```
+
+Options: `--status` (default `new,in_progress`), `--interval`, `--max-cases`. The
+[demo](../../demo) runs it for you.
+
 ## What the agent may do
 
 The agent can only do what anysoar's policy layer allows (see the main README):

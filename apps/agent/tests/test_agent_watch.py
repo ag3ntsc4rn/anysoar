@@ -51,9 +51,9 @@ async def test_follows_a_switch_between_cases(tmp_path: Path) -> None:
     # Switched as the first case started, so that triage already ran on the second SOAR:
     # its note landed on the second SOAR's case-0001, making it the most recently updated
     # there, so the next (least recently updated) case is the second SOAR's case-0002.
-    assert [(h.soar, h.case_uid) for h in handled] == [
-        ("first", "case-0001"),
-        ("second", "case-0002"),
+    assert [(h.soar, h.case_uid, h.switched_to) for h in handled] == [
+        ("first", "case-0001", "second"),  # switched while it was in progress
+        ("second", "case-0002", None),
     ]
 
     def demo_notes(case_notes: list[str]) -> int:

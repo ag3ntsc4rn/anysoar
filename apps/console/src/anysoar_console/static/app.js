@@ -212,7 +212,11 @@ function showSoar(state) {
 
 async function switchSoar(name, active) {
   if (name === active) return;
-  if (!confirm(`Switch anysoar to ${name}? Agents keep running; their next calls go to ${name}.`)) return;
+  const message =
+    `Switch anysoar to ${name}?\n\nAgents keep running and their next calls go to ${name}. ` +
+    "A case an agent is in the middle of continues on the new SOAR and may fail, so switch " +
+    "between cases.";
+  if (!confirm(message)) return;
   try {
     showSoar(await call("/ui/soar", { method: "POST", body: JSON.stringify({ soar: name }) }));
     toast(`Switched to ${name}`);
