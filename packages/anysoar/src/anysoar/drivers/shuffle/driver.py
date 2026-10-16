@@ -11,6 +11,7 @@ import httpx2
 from pydantic import JsonValue
 
 from anysoar import __version__
+from anysoar.drivers.shuffle import incidents
 from anysoar.drivers.shuffle.client import ShuffleAPIError, ShuffleClient
 from anysoar.errors import NotFoundError
 from anysoar.interface import (
@@ -21,7 +22,7 @@ from anysoar.interface import (
     PlaybookRun,
     PlaybookRunStatus,
 )
-from anysoar.models import now_timestamp
+from anysoar.models import IncidentFinding, Note, VerdictId, now_timestamp
 
 __all__ = ["DESTRUCTIVE_TAG", "ShuffleDriver"]
 
@@ -43,6 +44,10 @@ _FAILED_STEP_STATUSES = {"FAILURE", "ABORTED"}
 
 class ShuffleDriver(Driver):
     """Drives a Shuffle instance through its REST API.
+
+    Cases are Shuffle incidents (see :mod:`anysoar.drivers.shuffle.incidents`): the records
+    the Shuffle Security UI shows, translated to and from OCSF Incident Findings. A case's
+    uid is the incident's id.
 
     Playbooks are Shuffle workflows. A run's input is the workflow's execution argument: a
     JSON object of the ``inputs``, plus an ``anysoar`` object with the ``case_uid`` and
@@ -75,6 +80,7 @@ class ShuffleDriver(Driver):
                 "Shuffle needs a base_url and api_key (or SHUFFLE_URL and SHUFFLE_API_KEY)"
             )
         self._client = ShuffleClient(base_url, api_key, timeout=timeout, transport=transport)
+        self._org: str | None = None
 
     async def describe(self) -> DriverInfo:
         return DriverInfo(
@@ -86,6 +92,64 @@ class ShuffleDriver(Driver):
 
     async def aclose(self) -> None:
         await self._client.aclose()
+
+    # -- Cases ----------------------------------------------------------------------------
+
+    async def get_case(self, case_uid: str) -> IncidentFinding:
+        return incidents.to_case(await self._incident(case_uid))
+
+    async def add_note(self, case_uid: str, note: Note) -> Note:
+        record = await self._incident(case_uid)
+        timestamp = note.created_time or now_timestamp()
+        author = note.owner.name if note.owner and note.owner.name else incidents.AUTHOR
+        entry = incidents.comment_entry(note.comment, timestamp, author=author)
+        record["activity"] = [*(record.get("activity") or []), entry]
+        await self._save_incident(record)
+        return note.model_copy(update={"uid": entry["id"], "created_time": timestamp})
+
+    async def close_case(
+        self, case_uid: str, *, verdict_id: VerdictId, comment: str | None = None
+    ) -> IncidentFinding:
+        record = await self._incident(case_uid)
+        closed = incidents.close_record(record, verdict_id, comment, now_timestamp())
+        await self._save_incident(closed)
+        return incidents.to_case(closed)
+
+    async def _org_id(self) -> str:
+        if self._org is None:
+            info = await self._client.request("GET", "/api/v1/users/getinfo")
+            self._org = str(info["active_org"]["id"])
+        return self._org
+
+    async def _incident(self, case_uid: str) -> dict[str, Any]:
+        org = await self._org_id()
+        try:
+            entry = await self._client.request(
+                "POST",
+                f"/api/v1/orgs/{org}/get_cache",
+                json={"key": case_uid, "category": incidents.CATEGORY, "org_id": org},
+            )
+        except ShuffleAPIError as exc:
+            raise _not_found_or(exc, "case", case_uid) from exc
+        # Shuffle ignores the category on reads; never treat other datastore entries as cases.
+        if entry.get("category") != incidents.CATEGORY:
+            raise NotFoundError("case", case_uid)
+        record: dict[str, Any] = json.loads(entry["value"])
+        return record
+
+    async def _save_incident(self, record: dict[str, Any]) -> None:
+        # Last write wins: Shuffle's datastore has no conditional update.
+        org = await self._org_id()
+        await self._client.request(
+            "POST",
+            f"/api/v1/orgs/{org}/set_cache",
+            json={
+                "key": record["id"],
+                "category": incidents.CATEGORY,
+                "value": json.dumps(record),
+                "ignore_security_rules": True,
+            },
+        )
 
     # -- Playbooks ------------------------------------------------------------------------
 
