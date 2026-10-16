@@ -54,6 +54,18 @@ The Claude backend uses adaptive thinking (shown as `(thinking)` lines), prompt 
 server-side fallbacks: if a safety classifier declines a request, the API retries it on a
 recommended fallback model within the same call.
 
+## Approve in the browser
+
+With [`anysoar-console`](../console) running, add `--console`:
+
+```bash
+uv run anysoar-agent triage case-0001 --console
+```
+
+The agent's writes wait in the console for your decision instead of this terminal, and its
+reasoning and tool calls appear there as it works. If the console stops responding, the agent
+warns once and carries on; approvals then fail safe and are denied.
+
 ## What the agent may do
 
 The agent can only do what anysoar's policy layer allows (see the main README):
