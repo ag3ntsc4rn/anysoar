@@ -49,6 +49,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   decides, audits and checks the kill switch. Policy denials and SOAR errors are returned as
   readable tool errors.
 - `GuardedDriver.action(capability, **arguments)` previews the `Action` a call would produce.
+- `anysoar.drivers.shuffle`: `ShuffleDriver` for the Shuffle SOAR (`anysoar[shuffle]`). Shuffle
+  workflows are playbooks: list, run (the inputs and case/alert context become the execution
+  argument) and poll runs. Workflows tagged `anysoar:destructive` are destructive playbooks.
+  Shuffle's inconsistent error responses map to `NotFoundError` and `DriverError`.
 - `anysoar-mcp` command (also `python -m anysoar.mcp`): runs the MCP server over stdio with
   `--driver` (currently `mock`), `--policy` (TOML; unlisted tiers keep their defaults),
   `--audit-log` and `--kill-switch`, each also settable with an `ANYSOAR_*` environment
@@ -59,6 +63,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A case's uid is its `metadata.uid`, since an OCSF Incident Finding has no uid of its own.
 - `anysoar-mcp` logs only warnings from the MCP SDK; its own messages stay at info.
+- The `shuffle` extra now depends on `httpx2` (used by the MCP and Anthropic SDKs) instead of
+  `httpx`.
 
 ## [0.0.1] - 2026-10-15
 
