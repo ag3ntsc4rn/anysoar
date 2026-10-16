@@ -22,6 +22,7 @@ from anysoar.models import (
 )
 from anysoar.testing import DriverContract
 
+from .. import NO_WAIT
 from .fake_thehive import API_KEY, BASE_URL, MINUTE, T0, FakeTheHive
 
 Status = DetectionFindingStatusId
@@ -34,7 +35,7 @@ def thehive() -> FakeTheHive:
 
 @pytest.fixture
 def soar(thehive: FakeTheHive) -> TheHiveDriver:
-    return TheHiveDriver(BASE_URL, API_KEY, transport=thehive.transport())
+    return TheHiveDriver(BASE_URL, API_KEY, retry=NO_WAIT, transport=thehive.transport())
 
 
 class TestTheHiveContract(DriverContract):
@@ -44,7 +45,7 @@ class TestTheHiveContract(DriverContract):
 
     @pytest.fixture
     def driver(self, fake: FakeTheHive) -> TheHiveDriver:
-        return TheHiveDriver(BASE_URL, API_KEY, transport=fake.transport())
+        return TheHiveDriver(BASE_URL, API_KEY, retry=NO_WAIT, transport=fake.transport())
 
     @pytest.fixture
     def case_uid(self, fake: FakeTheHive) -> str:
@@ -79,7 +80,7 @@ class TestConfiguration:
             TheHiveDriver()
 
     async def test_bad_key(self, thehive: FakeTheHive) -> None:
-        soar = TheHiveDriver(BASE_URL, "wrong", transport=thehive.transport())
+        soar = TheHiveDriver(BASE_URL, "wrong", retry=NO_WAIT, transport=thehive.transport())
         with pytest.raises(TheHiveAPIError) as error:
             await soar.list_alerts()
         assert error.value.status == 401
@@ -90,7 +91,9 @@ class TestConfiguration:
         def refuse(request: httpx2.Request) -> httpx2.Response:
             raise httpx2.ConnectError("connection refused", request=request)
 
-        soar = TheHiveDriver(BASE_URL, API_KEY, transport=httpx2.MockTransport(refuse))
+        soar = TheHiveDriver(
+            BASE_URL, API_KEY, retry=NO_WAIT, transport=httpx2.MockTransport(refuse)
+        )
         with pytest.raises(DriverError, match="Could not reach TheHive") as error:
             await soar.list_alerts()
         assert error.value.retryable

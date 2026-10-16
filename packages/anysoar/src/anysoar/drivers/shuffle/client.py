@@ -9,6 +9,9 @@ from anysoar.errors import DriverError
 
 try:
     import httpx2
+
+    from anysoar.drivers._http import send
+    from anysoar.drivers.retry import Retry
 except ModuleNotFoundError as exc:
     raise missing_extra("shuffle", exc) from exc
 
@@ -45,6 +48,8 @@ class ShuffleClient:
 
     Raises :class:`ShuffleAPIError` for error responses and :class:`DriverError` (marked
     retryable) for timeouts and connection failures, so no ``httpx2`` exception escapes.
+    Retries rate limits, failed connections and, for idempotent requests, server errors and
+    timeouts (see :mod:`anysoar.drivers._http`).
     """
 
     def __init__(
@@ -53,8 +58,10 @@ class ShuffleClient:
         api_key: str,
         *,
         timeout: float = 30.0,
+        retry: Retry | None = None,
         transport: httpx2.AsyncBaseTransport | None = None,
     ) -> None:
+        self._retry = retry or Retry()
         self._http = httpx2.AsyncClient(
             base_url=base_url.rstrip("/"),
             headers={"Authorization": f"Bearer {api_key}"},
@@ -69,15 +76,14 @@ class ShuffleClient:
         *,
         json: Any = None,
         params: dict[str, str] | None = None,
+        idempotent: bool | None = None,
     ) -> Any:
-        try:
-            response = await self._http.request(method, path, json=json, params=params)
-        except httpx2.TimeoutException as exc:
-            raise DriverError(
-                f"Shuffle request timed out: {method} {path}", retryable=True
-            ) from exc
-        except httpx2.TransportError as exc:
-            raise DriverError(f"Could not reach Shuffle: {exc}", retryable=True) from exc
+        """Send a request. ``idempotent=True`` marks a POST that only reads or overwrites, so
+        it may be retried after a server error or timeout."""
+        request = self._http.build_request(method, path, json=json, params=params)
+        response = await send(
+            self._http, request, product="Shuffle", retry=self._retry, idempotent=idempotent
+        )
         try:
             body = response.json() if response.content else None
         except ValueError:

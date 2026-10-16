@@ -14,6 +14,7 @@ from anysoar.interface import ActionTier, Capability, PlaybookRunStatus
 from anysoar.models import VerdictId
 from anysoar.testing import DriverContract
 
+from .. import NO_WAIT
 from .fake_tines import API_KEY, BASE_URL, WEBHOOK_SECRET, FakeTines
 
 
@@ -24,7 +25,7 @@ def tines() -> FakeTines:
 
 @pytest.fixture
 def soar(tines: FakeTines) -> TinesDriver:
-    return TinesDriver(BASE_URL, API_KEY, transport=tines.transport())
+    return TinesDriver(BASE_URL, API_KEY, retry=NO_WAIT, transport=tines.transport())
 
 
 class TestTinesContract(DriverContract):
@@ -34,7 +35,7 @@ class TestTinesContract(DriverContract):
 
     @pytest.fixture
     def driver(self, fake: FakeTines) -> TinesDriver:
-        return TinesDriver(BASE_URL, API_KEY, transport=fake.transport())
+        return TinesDriver(BASE_URL, API_KEY, retry=NO_WAIT, transport=fake.transport())
 
     @pytest.fixture
     def case_uid(self, fake: FakeTines) -> str:
@@ -161,14 +162,14 @@ class TestPlaybooks:
                 await soar.get_playbook_run(run_uid)
 
     async def test_other_teams_stories_are_hidden(self, tines: FakeTines) -> None:
-        soar = TinesDriver(BASE_URL, API_KEY, team_id=1, transport=tines.transport())
+        soar = TinesDriver(BASE_URL, API_KEY, team_id=1, retry=NO_WAIT, transport=tines.transport())
         with pytest.raises(NotFoundError):
             await soar.run_playbook(str(tines.block_sender))
 
 
 class TestErrors:
     async def test_bad_api_key(self, tines: FakeTines) -> None:
-        soar = TinesDriver(BASE_URL, "wrong-key", transport=tines.transport())
+        soar = TinesDriver(BASE_URL, "wrong-key", retry=NO_WAIT, transport=tines.transport())
         with pytest.raises(TinesAPIError, match="Unauthorized") as raised:
             await soar.list_playbooks()
         assert raised.value.status == 401
@@ -180,7 +181,9 @@ class TestErrors:
         def handler(request: httpx2.Request) -> httpx2.Response:
             return httpx2.Response(status, text="slow down")
 
-        soar = TinesDriver(BASE_URL, API_KEY, transport=httpx2.MockTransport(handler))
+        soar = TinesDriver(
+            BASE_URL, API_KEY, retry=NO_WAIT, transport=httpx2.MockTransport(handler)
+        )
         with pytest.raises(TinesAPIError) as raised:
             await soar.list_playbooks()
         assert raised.value.retryable
@@ -189,7 +192,9 @@ class TestErrors:
         def handler(request: httpx2.Request) -> httpx2.Response:
             return httpx2.Response(422, json={"errors": ["Closure conditions not met"]})
 
-        soar = TinesDriver(BASE_URL, API_KEY, transport=httpx2.MockTransport(handler))
+        soar = TinesDriver(
+            BASE_URL, API_KEY, retry=NO_WAIT, transport=httpx2.MockTransport(handler)
+        )
         with pytest.raises(TinesAPIError, match="Closure conditions not met"):
             await soar.list_cases()
 
@@ -197,7 +202,9 @@ class TestErrors:
         def handler(request: httpx2.Request) -> httpx2.Response:
             raise httpx2.ConnectError("connection refused")
 
-        soar = TinesDriver(BASE_URL, API_KEY, transport=httpx2.MockTransport(handler))
+        soar = TinesDriver(
+            BASE_URL, API_KEY, retry=NO_WAIT, transport=httpx2.MockTransport(handler)
+        )
         with pytest.raises(DriverError, match="Could not reach Tines") as raised:
             await soar.list_playbooks()
         assert raised.value.retryable
@@ -277,11 +284,15 @@ class TestTenantWithoutCases:
         def handler(request: httpx2.Request) -> httpx2.Response:
             return httpx2.Response(503, text="down")
 
-        soar = TinesDriver(BASE_URL, API_KEY, transport=httpx2.MockTransport(handler))
+        soar = TinesDriver(
+            BASE_URL, API_KEY, retry=NO_WAIT, transport=httpx2.MockTransport(handler)
+        )
         assert Capability.GET_CASE in (await soar.describe()).capabilities
 
 
 class TestTinesContractWithoutCases(DriverContract):
     @pytest.fixture
     def driver(self) -> TinesDriver:
-        return TinesDriver(BASE_URL, API_KEY, transport=FakeTines(has_cases=False).transport())
+        return TinesDriver(
+            BASE_URL, API_KEY, retry=NO_WAIT, transport=FakeTines(has_cases=False).transport()
+        )

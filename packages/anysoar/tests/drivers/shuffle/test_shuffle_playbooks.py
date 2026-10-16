@@ -14,6 +14,7 @@ from anysoar.errors import DriverError, NotFoundError
 from anysoar.interface import ActionTier, Capability, PlaybookRunStatus
 from anysoar.testing import DriverContract
 
+from .. import NO_WAIT
 from .fake_shuffle import API_KEY, BASE_URL, FakeShuffle, new_incident
 
 
@@ -24,7 +25,7 @@ def shuffle() -> FakeShuffle:
 
 @pytest.fixture
 def soar(shuffle: FakeShuffle) -> ShuffleDriver:
-    return ShuffleDriver(BASE_URL, API_KEY, transport=shuffle.transport())
+    return ShuffleDriver(BASE_URL, API_KEY, retry=NO_WAIT, transport=shuffle.transport())
 
 
 class TestShuffleContract(DriverContract):
@@ -34,7 +35,7 @@ class TestShuffleContract(DriverContract):
 
     @pytest.fixture
     def driver(self, fake: FakeShuffle) -> ShuffleDriver:
-        return ShuffleDriver(BASE_URL, API_KEY, transport=fake.transport())
+        return ShuffleDriver(BASE_URL, API_KEY, retry=NO_WAIT, transport=fake.transport())
 
     @pytest.fixture
     def case_uid(self, fake: FakeShuffle) -> str:
@@ -149,7 +150,7 @@ class TestPlaybooks:
 
 class TestErrors:
     async def test_bad_api_key(self, shuffle: FakeShuffle) -> None:
-        soar = ShuffleDriver(BASE_URL, "wrong-key", transport=shuffle.transport())
+        soar = ShuffleDriver(BASE_URL, "wrong-key", retry=NO_WAIT, transport=shuffle.transport())
         with pytest.raises(ShuffleAPIError) as raised:
             await soar.list_playbooks()
         assert raised.value.status == 401
@@ -160,7 +161,9 @@ class TestErrors:
         def handler(request: httpx2.Request) -> httpx2.Response:
             return httpx2.Response(503, text="upstream unavailable")
 
-        soar = ShuffleDriver(BASE_URL, API_KEY, transport=httpx2.MockTransport(handler))
+        soar = ShuffleDriver(
+            BASE_URL, API_KEY, retry=NO_WAIT, transport=httpx2.MockTransport(handler)
+        )
         with pytest.raises(ShuffleAPIError) as raised:
             await soar.list_playbooks()
         assert raised.value.retryable
@@ -169,7 +172,9 @@ class TestErrors:
         def handler(request: httpx2.Request) -> httpx2.Response:
             raise httpx2.ConnectError("connection refused")
 
-        soar = ShuffleDriver(BASE_URL, API_KEY, transport=httpx2.MockTransport(handler))
+        soar = ShuffleDriver(
+            BASE_URL, API_KEY, retry=NO_WAIT, transport=httpx2.MockTransport(handler)
+        )
         with pytest.raises(DriverError, match="Could not reach Shuffle") as raised:
             await soar.list_playbooks()
         assert raised.value.retryable
@@ -178,7 +183,9 @@ class TestErrors:
         def handler(request: httpx2.Request) -> httpx2.Response:
             return httpx2.Response(200, json={"success": False, "reason": "Read only user"})
 
-        soar = ShuffleDriver(BASE_URL, API_KEY, transport=httpx2.MockTransport(handler))
+        soar = ShuffleDriver(
+            BASE_URL, API_KEY, retry=NO_WAIT, transport=httpx2.MockTransport(handler)
+        )
         with pytest.raises(ShuffleAPIError, match="Read only user"):
             await soar.list_playbooks()
 

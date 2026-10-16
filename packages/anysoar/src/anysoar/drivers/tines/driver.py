@@ -29,6 +29,8 @@ from anysoar.models import IncidentFinding, Note, VerdictId, now_timestamp
 if TYPE_CHECKING:
     import httpx2
 
+    from anysoar.drivers import Retry
+
 __all__ = ["DESTRUCTIVE_TAG", "TinesDriver"]
 
 DESTRUCTIVE_TAG = "anysoar:destructive"
@@ -68,6 +70,8 @@ class TinesDriver(Driver):
         team_id: Only use this team's cases and stories. Defaults to ``TINES_TEAM_ID``, or
             every team the key can see.
         timeout: Seconds to wait for each request.
+        retry: How to retry failed requests; by default up to three tries for those that
+            are safe to repeat (see :class:`~anysoar.drivers.Retry`).
         transport: An ``httpx2`` transport, for tests.
     """
 
@@ -80,6 +84,7 @@ class TinesDriver(Driver):
         *,
         team_id: int | str | None = None,
         timeout: float = 30.0,
+        retry: Retry | None = None,
         transport: httpx2.AsyncBaseTransport | None = None,
     ) -> None:
         base_url = base_url or os.environ.get("TINES_URL")
@@ -90,7 +95,9 @@ class TinesDriver(Driver):
         if team is not None and not str(team).isdigit():
             raise ValueError(f"team_id must be a Tines team id (a number), not {team!r}")
         self._team = str(team) if team is not None else None
-        self._client = TinesClient(base_url, api_key, timeout=timeout, transport=transport)
+        self._client = TinesClient(
+            base_url, api_key, timeout=timeout, retry=retry, transport=transport
+        )
         self._has_cases: bool | None = None
 
     async def describe(self) -> DriverInfo:

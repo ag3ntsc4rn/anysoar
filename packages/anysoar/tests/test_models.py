@@ -106,6 +106,22 @@ class TestDetectionFinding:
         triaged = alert(verdict_id=VerdictId.TRUE_POSITIVE, assignee=User(name="analyst"))
         assert triaged.to_ocsf()["metadata"]["profiles"] == ["incident"]
 
+    def test_profiles_are_declared_on_the_model_so_it_round_trips(self) -> None:
+        triaged = alert(assignee=User(name="analyst"))
+        assert triaged.metadata.profiles == ["incident"]
+        assert DetectionFinding.from_ocsf(triaged.to_ocsf()) == triaged
+
+    def test_profiles_follow_assignment(self) -> None:
+        finding = alert()
+        finding.verdict_id = VerdictId.FALSE_POSITIVE
+        assert finding.metadata.profiles == ["incident"]
+        assert DetectionFinding.from_ocsf(finding.to_ocsf()) == finding
+
+    def test_declared_profiles_are_kept(self) -> None:
+        finding = alert(metadata=metadata().model_copy(update={"profiles": ["cloud"]}))
+        finding.assignee = User(name="analyst")
+        assert finding.metadata.profiles == ["cloud", "incident"]
+
     def test_empty_arrays_and_none_omitted(self) -> None:
         out = alert(observables=[], message=None).to_ocsf()
         assert "observables" not in out

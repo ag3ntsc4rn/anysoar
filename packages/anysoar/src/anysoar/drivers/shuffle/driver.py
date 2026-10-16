@@ -28,6 +28,8 @@ from anysoar.models import IncidentFinding, Note, VerdictId, now_timestamp
 if TYPE_CHECKING:
     import httpx2
 
+    from anysoar.drivers import Retry
+
 __all__ = ["DESTRUCTIVE_TAG", "ShuffleDriver"]
 
 DESTRUCTIVE_TAG = "anysoar:destructive"
@@ -64,6 +66,8 @@ class ShuffleDriver(Driver):
             ``SHUFFLE_URL`` environment variable.
         api_key: An API key from Shuffle's settings. Defaults to ``SHUFFLE_API_KEY``.
         timeout: Seconds to wait for each request.
+        retry: How to retry failed requests; by default up to three tries for those that
+            are safe to repeat (see :class:`~anysoar.drivers.Retry`).
         transport: An ``httpx2`` transport, for tests.
     """
 
@@ -75,6 +79,7 @@ class ShuffleDriver(Driver):
         api_key: str | None = None,
         *,
         timeout: float = 30.0,
+        retry: Retry | None = None,
         transport: httpx2.AsyncBaseTransport | None = None,
     ) -> None:
         base_url = base_url or os.environ.get("SHUFFLE_URL")
@@ -83,7 +88,9 @@ class ShuffleDriver(Driver):
             raise ValueError(
                 "Shuffle needs a base_url and api_key (or SHUFFLE_URL and SHUFFLE_API_KEY)"
             )
-        self._client = ShuffleClient(base_url, api_key, timeout=timeout, transport=transport)
+        self._client = ShuffleClient(
+            base_url, api_key, timeout=timeout, retry=retry, transport=transport
+        )
         self._org: str | None = None
 
     async def describe(self) -> DriverInfo:
@@ -157,6 +164,7 @@ class ShuffleDriver(Driver):
                 "POST",
                 f"/api/v1/orgs/{org}/get_cache",
                 json={"key": case_uid, "category": incidents.CATEGORY, "org_id": org},
+                idempotent=True,  # a read
             )
         except ShuffleAPIError as exc:
             raise _not_found_or(exc, "case", case_uid) from exc
@@ -178,6 +186,7 @@ class ShuffleDriver(Driver):
                 "value": json.dumps(record),
                 "ignore_security_rules": True,
             },
+            idempotent=True,  # overwrites the whole record, so sending it twice is harmless
         )
 
     # -- Playbooks ------------------------------------------------------------------------
@@ -220,7 +229,10 @@ class ShuffleDriver(Driver):
         try:
             # Authenticated with the API key, so Shuffle's per-run token is never needed.
             execution = await self._client.request(
-                "POST", "/api/v1/streams/results", json={"execution_id": run_uid}
+                "POST",
+                "/api/v1/streams/results",
+                json={"execution_id": run_uid},
+                idempotent=True,  # a read
             )
         except ShuffleAPIError as exc:
             raise _not_found_or(exc, "playbook run", run_uid) from exc

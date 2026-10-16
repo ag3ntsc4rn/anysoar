@@ -9,6 +9,9 @@ from anysoar.errors import DriverError
 
 try:
     import httpx2
+
+    from anysoar.drivers._http import send
+    from anysoar.drivers.retry import Retry
 except ModuleNotFoundError as exc:
     raise missing_extra("tines", exc) from exc
 
@@ -43,6 +46,8 @@ class TinesClient:
 
     Raises :class:`TinesAPIError` for error responses and :class:`DriverError` (marked
     retryable) for timeouts and connection failures, so no ``httpx2`` exception escapes.
+    Retries rate limits, failed connections and, for idempotent requests, server errors and
+    timeouts (see :mod:`anysoar.drivers._http`).
     """
 
     def __init__(
@@ -51,8 +56,10 @@ class TinesClient:
         api_key: str,
         *,
         timeout: float = 30.0,
+        retry: Retry | None = None,
         transport: httpx2.AsyncBaseTransport | None = None,
     ) -> None:
+        self._retry = retry or Retry()
         self._http = httpx2.AsyncClient(
             base_url=base_url.rstrip("/"),
             headers={"Authorization": f"Bearer {api_key}"},
@@ -74,12 +81,7 @@ class TinesClient:
         request = self._http.build_request(method, path, json=json, params=params)
         if not authenticate:
             del request.headers["Authorization"]
-        try:
-            response = await self._http.send(request)
-        except httpx2.TimeoutException as exc:
-            raise DriverError(f"Tines request timed out: {method} {path}", retryable=True) from exc
-        except httpx2.TransportError as exc:
-            raise DriverError(f"Could not reach Tines: {exc}", retryable=True) from exc
+        response = await send(self._http, request, product="Tines", retry=self._retry)
         try:
             body = response.json() if response.content else None
         except ValueError:

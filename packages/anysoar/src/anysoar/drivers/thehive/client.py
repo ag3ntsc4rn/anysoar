@@ -9,6 +9,9 @@ from anysoar.errors import DriverError
 
 try:
     import httpx2
+
+    from anysoar.drivers._http import send
+    from anysoar.drivers.retry import Retry
 except ModuleNotFoundError as exc:
     raise missing_extra("thehive", exc) from exc
 
@@ -37,6 +40,8 @@ class TheHiveClient:
 
     Raises :class:`TheHiveAPIError` for error responses and :class:`DriverError` (marked
     retryable) for timeouts and connection failures, so no ``httpx2`` exception escapes.
+    Retries rate limits, failed connections and, for idempotent requests, server errors and
+    timeouts (see :mod:`anysoar.drivers._http`); queries count as idempotent.
     """
 
     def __init__(
@@ -46,8 +51,10 @@ class TheHiveClient:
         *,
         organisation: str | None = None,
         timeout: float = 30.0,
+        retry: Retry | None = None,
         transport: httpx2.AsyncBaseTransport | None = None,
     ) -> None:
+        self._retry = retry or Retry()
         headers = {"Authorization": f"Bearer {api_key}"}
         if organisation:
             headers["X-Organisation"] = organisation
@@ -62,15 +69,12 @@ class TheHiveClient:
         *,
         json: Any = None,
         params: dict[str, str] | None = None,
+        idempotent: bool | None = None,
     ) -> Any:
-        try:
-            response = await self._http.request(method, path, json=json, params=params)
-        except httpx2.TimeoutException as exc:
-            raise DriverError(
-                f"TheHive request timed out: {method} {path}", retryable=True
-            ) from exc
-        except httpx2.TransportError as exc:
-            raise DriverError(f"Could not reach TheHive: {exc}", retryable=True) from exc
+        request = self._http.build_request(method, path, json=json, params=params)
+        response = await send(
+            self._http, request, product="TheHive", retry=self._retry, idempotent=idempotent
+        )
         try:
             body = response.json() if response.content else None
         except ValueError:
@@ -85,7 +89,11 @@ class TheHiveClient:
     async def query(self, name: str, operations: list[dict[str, Any]]) -> Any:
         """Run a query (``POST /api/v1/query``); ``name`` labels it in TheHive's logs."""
         return await self.request(
-            "POST", "/api/v1/query", params={"name": name}, json={"query": operations}
+            "POST",
+            "/api/v1/query",
+            params={"name": name},
+            json={"query": operations},
+            idempotent=True,  # a query only reads
         )
 
     async def aclose(self) -> None:

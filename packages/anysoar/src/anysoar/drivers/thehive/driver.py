@@ -26,6 +26,8 @@ from anysoar.models import DetectionFinding, IncidentFinding, Note, Observable, 
 if TYPE_CHECKING:
     import httpx2
 
+    from anysoar.drivers import Retry
+
 __all__ = ["TheHiveDriver"]
 
 _MAX_RELATED = 1000
@@ -57,6 +59,8 @@ class TheHiveDriver(Driver):
         timeout: Seconds to wait for each request.
         enrich_timeout: Seconds :meth:`enrich_indicator` waits for analyzers to finish.
         poll_interval: Seconds between checks on running analyzers.
+        retry: How to retry failed requests; by default up to three tries for those that
+            are safe to repeat (see :class:`~anysoar.drivers.Retry`).
         transport: An ``httpx2`` transport, for tests.
     """
 
@@ -71,6 +75,7 @@ class TheHiveDriver(Driver):
         timeout: float = 30.0,
         enrich_timeout: float = 60.0,
         poll_interval: float = 2.0,
+        retry: Retry | None = None,
         transport: httpx2.AsyncBaseTransport | None = None,
     ) -> None:
         base_url = base_url or os.environ.get("THEHIVE_URL")
@@ -84,6 +89,7 @@ class TheHiveDriver(Driver):
             api_key,
             organisation=organisation or os.environ.get("THEHIVE_ORGANISATION") or None,
             timeout=timeout,
+            retry=retry,
             transport=transport,
         )
         self._enrich_timeout = enrich_timeout

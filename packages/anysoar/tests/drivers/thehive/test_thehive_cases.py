@@ -1,5 +1,6 @@
 import json
 
+import httpx2
 import pytest
 
 from anysoar.drivers.thehive import TheHiveDriver
@@ -15,6 +16,7 @@ from anysoar.models import (
     VerdictId,
 )
 
+from .. import NO_WAIT
 from .fake_thehive import API_KEY, BASE_URL, MINUTE, T0, FakeTheHive
 
 Status = IncidentFindingStatusId
@@ -30,7 +32,7 @@ def thehive() -> FakeTheHive:
 
 @pytest.fixture
 def soar(thehive: FakeTheHive) -> TheHiveDriver:
-    return TheHiveDriver(BASE_URL, API_KEY, transport=thehive.transport())
+    return TheHiveDriver(BASE_URL, API_KEY, retry=NO_WAIT, transport=thehive.transport())
 
 
 class TestReadingCases:
@@ -231,3 +233,47 @@ class TestWritingCases:
     )
     def test_closing_status(self, verdict: VerdictId, status: str) -> None:
         assert closing(verdict, ["x", "verdict:old"])[0] == status
+
+
+class TestRetries:
+    """What the shared retry rules mean for TheHive's requests."""
+
+    @staticmethod
+    def flaky(thehive: FakeTheHive, failures: int) -> tuple[TheHiveDriver, list[str]]:
+        """A driver whose first ``failures`` requests get a 502 from a proxy in front."""
+        sent: list[str] = []
+
+        def handle(request: httpx2.Request) -> httpx2.Response:
+            sent.append(f"{request.method} {request.url.path}")
+            if len(sent) <= failures:
+                return httpx2.Response(502, text="Bad Gateway")
+            return thehive.handle(request)
+
+        soar = TheHiveDriver(
+            BASE_URL, API_KEY, retry=NO_WAIT, transport=httpx2.MockTransport(handle)
+        )
+        return soar, sent
+
+    async def test_queries_are_retried(self, thehive: FakeTheHive) -> None:
+        soar, sent = self.flaky(thehive, failures=2)
+        page = await soar.list_cases()  # POST /api/v1/query, which only reads
+        assert len(page.items) == 5
+        assert sent[:3] == ["POST /api/v1/query"] * 3
+
+    async def test_comments_are_not_repeated(self, thehive: FakeTheHive) -> None:
+        sent: list[str] = []
+
+        def fail_comments(request: httpx2.Request) -> httpx2.Response:
+            sent.append(f"{request.method} {request.url.path}")
+            if request.url.path.endswith("/comment"):
+                return httpx2.Response(502, text="Bad Gateway")
+            return thehive.handle(request)
+
+        soar = TheHiveDriver(
+            BASE_URL, API_KEY, retry=NO_WAIT, transport=httpx2.MockTransport(fail_comments)
+        )
+        with pytest.raises(DriverError) as error:
+            await soar.add_note(thehive.open_case, Note(comment="once only"))
+        assert error.value.retryable
+        assert sent.count(f"POST /api/v1/case/{thehive.open_case}/comment") == 1
+        assert thehive.comments[thehive.open_case] == []

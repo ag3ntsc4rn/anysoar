@@ -6,6 +6,7 @@ from anysoar.errors import NotFoundError
 from anysoar.interface import CaseQuery
 from anysoar.models import IncidentFindingStatusId, Note, User, VerdictId
 
+from .. import NO_WAIT
 from .fake_shuffle import API_KEY, BASE_URL, FakeShuffle, new_incident, ui_incident
 
 
@@ -16,7 +17,7 @@ def shuffle() -> FakeShuffle:
 
 @pytest.fixture
 def soar(shuffle: FakeShuffle) -> ShuffleDriver:
-    return ShuffleDriver(BASE_URL, API_KEY, transport=shuffle.transport())
+    return ShuffleDriver(BASE_URL, API_KEY, retry=NO_WAIT, transport=shuffle.transport())
 
 
 class TestReadingWhatShuffleWrote:

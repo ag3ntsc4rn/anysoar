@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
 from pydantic import Field, JsonValue, computed_field, model_validator
 
@@ -50,6 +50,15 @@ class _Finding(OcsfModel):
     def type_uid(self) -> int:
         """OCSF event type: ``class_uid * 100 + activity_id``."""
         return self.class_uid * 100 + int(self.activity_id)
+
+    @model_validator(mode="after")
+    def _declare_profiles(self) -> Self:
+        """List the OCSF profiles whose attributes are set in ``metadata.profiles``, as
+        serializing does, so a finding equals itself parsed back from OCSF."""
+        missing = self.ocsf_profiles() - set(self.metadata.profiles)
+        if missing:
+            self.metadata.profiles = sorted({*self.metadata.profiles, *missing})
+        return self
 
     @model_validator(mode="before")
     @classmethod
