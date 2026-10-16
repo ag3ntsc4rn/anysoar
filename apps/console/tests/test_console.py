@@ -2,60 +2,20 @@ import asyncio
 import json
 import os
 import stat
-import threading
-import time
-from collections.abc import Iterator
-from dataclasses import dataclass
 from pathlib import Path
 
 import httpx2
 import pytest
-import uvicorn
 from starlette.testclient import TestClient
 
 from anysoar.drivers.mock import MockDriver
 from anysoar.errors import DenialReason, PolicyDeniedError
 from anysoar.models import Note
-from anysoar.policy import AuditEventKind, GuardedDriver, HttpApprover, MemoryAuditLog
-from anysoar_console.app import CSRF_HEADER, SESSION_COOKIE, ConsoleConfig, create_app
+from anysoar.policy import AuditEventKind, GuardedDriver, MemoryAuditLog
+from anysoar_console.app import CSRF_HEADER, create_app
 from anysoar_console.cli import write_connection_file
 
-
-@dataclass
-class Console:
-    url: str
-    config: ConsoleConfig
-
-    def approver(self) -> HttpApprover:
-        return HttpApprover(self.url, self.config.submit_token, poll_wait=0.2)
-
-    def submitter(self) -> httpx2.AsyncClient:
-        token = self.config.submit_token
-        return httpx2.AsyncClient(base_url=self.url, headers={"Authorization": f"Bearer {token}"})
-
-    async def person(self) -> httpx2.AsyncClient:
-        """A signed-in browser."""
-        client = httpx2.AsyncClient(base_url=self.url, headers={CSRF_HEADER: "1"})
-        response = await client.get(f"/login?token={self.config.login_token}")
-        assert response.status_code in (200, 303)
-        assert client.cookies.get(SESSION_COOKIE)
-        return client
-
-
-@pytest.fixture
-def console() -> Iterator[Console]:
-    config = ConsoleConfig(operator="analyst1")
-    server = uvicorn.Server(
-        uvicorn.Config(create_app(config), host="127.0.0.1", port=0, log_level="warning")
-    )
-    thread = threading.Thread(target=server.run, daemon=True)
-    thread.start()
-    while not server.started:
-        time.sleep(0.01)
-    port = server.servers[0].sockets[0].getsockname()[1]
-    yield Console(f"http://127.0.0.1:{port}", config)
-    server.should_exit = True
-    thread.join(timeout=5)
+from .console_harness import Console
 
 
 async def pending(person: httpx2.AsyncClient) -> list[dict[str, object]]:

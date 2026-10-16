@@ -176,3 +176,85 @@ button:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px 
 @media (prefers-reduced-motion: reduce) {
   #toast { transition: none; }
 }
+
+/* -- Kill switch -------------------------------------------------------------------- */
+
+.stop {
+  margin-left: 0.5rem;
+  background: transparent;
+  color: var(--bad);
+  border-color: var(--bad);
+  padding: 0.3rem 0.8rem;
+  font-size: 0.85rem;
+}
+
+.stopped {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.75rem 1.5rem;
+  background: var(--bad);
+  color: #fff;
+}
+.stopped[hidden] { display: none; }
+.stopped span { opacity: 0.9; }
+.stopped button { margin-left: auto; background: #fff; color: var(--bad); }
+
+/* -- Layout ------------------------------------------------------------------------- */
+
+main { max-width: 1280px; }
+.columns { display: grid; gap: 2rem; }
+@media (min-width: 1000px) {
+  .columns { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); align-items: start; }
+  .agent { position: sticky; top: 1rem; }
+}
+
+/* -- Agent activity ----------------------------------------------------------------- */
+
+.feed {
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem;
+  max-height: 70vh;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.feed:empty { display: none; }
+.feed li { padding: 0.45rem 0.55rem; border-radius: 6px; font-size: 0.88rem; overflow-wrap: anywhere; }
+.feed li + li { margin-top: 0.15rem; }
+.feed .label { display: block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); font-weight: 700; }
+.feed .start { border-top: 1px solid var(--border); margin-top: 0.5rem; padding-top: 0.7rem; }
+.feed .start:first-child { border-top: 0; margin-top: 0; }
+.feed .reasoning { color: var(--muted); font-style: italic; white-space: pre-wrap; }
+.feed .text { white-space: pre-wrap; }
+.feed .tool_call code { font-family: ui-monospace, "SF Mono", monospace; font-size: 0.82rem; }
+.feed .tool_result.ok .label { color: var(--ok); }
+.feed .tool_result.failed { background: var(--bad-bg); }
+.feed .tool_result.failed .label { color: var(--bad); }
+.feed .done { color: var(--muted); }
+
+/* -- Audit trail -------------------------------------------------------------------- */
+
+.table-wrap { overflow-x: auto; }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 0.85rem;
+}
+th, td { text-align: left; padding: 0.45rem 0.7rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; }
+tr:last-child td { border-bottom: 0; }
+td.when { white-space: nowrap; color: var(--muted); }
+td.op { font-family: ui-monospace, "SF Mono", monospace; white-space: nowrap; }
+td.details { color: var(--muted); }
+.badge.requested { color: var(--accent); background: var(--bg); }
+.badge.approval { color: var(--warn); background: var(--warn-bg); }
+.badge.completed { color: var(--ok); background: var(--ok-bg); }
+.badge.denied, .badge.failed { color: var(--bad); background: var(--bad-bg); }
+code { font-family: ui-monospace, "SF Mono", monospace; font-size: 0.9em; }
