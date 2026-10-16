@@ -150,7 +150,7 @@ Drop `--provider demo` and set `ANTHROPIC_API_KEY` to let Claude do the triage.
 agents want to do, watch their reasoning as it happens, follow the audit trail, and stop
 everything with one button.
 
-![The anysoar console: an action waiting for approval, decisions with reasons, and the agent's reasoning and tool calls](docs/images/console.png)
+![The anysoar console switched to TheHive: the agent's note waiting for approval, an earlier note approved with a reason, the agent looking indicators up with Cortex, and the audit trail](docs/images/console.png)
 
 ```bash
 uv run anysoar-console                               # prints a sign-in link; open it
