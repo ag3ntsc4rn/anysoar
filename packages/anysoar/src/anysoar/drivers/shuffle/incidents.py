@@ -75,10 +75,13 @@ def _verdict_from_label(text: str) -> VerdictId | None:
         return None
 
 
-def comment_entry(text: str, timestamp: int, *, author: str = AUTHOR) -> dict[str, Any]:
+def comment_entry(
+    text: str, timestamp: int, *, author: str = AUTHOR, ai_handled: bool = True
+) -> dict[str, Any]:
     """An activity entry for a comment, as Shuffle Security writes it.
 
-    ``ai_handled`` is set because anysoar's comments come from AI agents.
+    ``ai_handled`` is Shuffle Security's flag for comments written by AI. It defaults to true
+    because comments anysoar writes come from agents; pass false for a person's comment.
     """
     return {
         "id": f"comment-{timestamp}",
@@ -88,12 +91,18 @@ def comment_entry(text: str, timestamp: int, *, author: str = AUTHOR) -> dict[st
         "content": text,
         "details": {},
         "attachments": [],
-        "ai_handled": True,
+        "ai_handled": ai_handled,
     }
 
 
 def close_record(
-    record: dict[str, Any], verdict: VerdictId, comment: str | None, timestamp: int
+    record: dict[str, Any],
+    verdict: VerdictId,
+    comment: str | None,
+    timestamp: int,
+    *,
+    author: str = AUTHOR,
+    ai_handled: bool = True,
 ) -> dict[str, Any]:
     """The record closed with ``verdict``, readable by both Shuffle's UI and anysoar."""
     closed = dict(record)
@@ -106,7 +115,7 @@ def close_record(
         {
             "id": f"status-{timestamp}",
             "type": "status",
-            "user": AUTHOR,
+            "user": author,
             "timestamp": timestamp,
             "content": f"Closed: {verdict_label(verdict)}",
             "details": {},
@@ -115,7 +124,7 @@ def close_record(
     )
     if comment:
         closed["comment"] = comment
-        activity.append(comment_entry(comment, timestamp + 1))
+        activity.append(comment_entry(comment, timestamp + 1, author=author, ai_handled=ai_handled))
     closed["activity"] = activity
     return closed
 

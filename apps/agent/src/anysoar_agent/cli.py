@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import json
 import os
 import sys
 from collections.abc import Awaitable, Callable, Sequence
+from dataclasses import dataclass
 from typing import Any, TextIO
 
 from mcp import Client, StdioServerParameters
@@ -19,7 +21,8 @@ from anysoar_agent.agent import Agent, AgentEvent, AgentResult
 from anysoar_agent.console import ConsoleReporter, connection_file, read_connection
 from anysoar_agent.model import Model
 from anysoar_agent.toolbox import McpToolbox
-from anysoar_agent.triage import DEMO_CASE, SYSTEM_PROMPT, demo_model, task
+from anysoar_agent.triage import DEMO_CASE, SYSTEM_PROMPT, demo_model, generic_demo_model, task
+from anysoar_agent.watch import OPEN_STATUSES, Handled, watch
 
 __all__ = ["Approver", "main", "run_triage", "terminal_approver"]
 
@@ -119,27 +122,19 @@ def _model(args: argparse.Namespace) -> Model:
     return ClaudeModel(args.model or DEFAULT_MODEL, effort=args.effort)
 
 
-def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="anysoar-agent",
-        description="Reference AI agent for anysoar. Write actions ask for your approval.",
-    )
-    commands = parser.add_subparsers(dest="command", required=True)
-    triage = commands.add_parser("triage", help="triage a phishing case")
-    triage.add_argument("case_uid", help="the case to triage, e.g. case-0001")
-    triage.add_argument(
+def _common(command: argparse.ArgumentParser, demo_help: str) -> None:
+    command.add_argument(
         "--provider",
         choices=["claude", "demo"],
         default="claude",
-        help="LLM provider; 'demo' replays a scripted triage of case-0002 offline "
-        "(default: %(default)s)",
+        help=f"LLM provider; 'demo' {demo_help} offline (default: %(default)s)",
     )
-    triage.add_argument("--model", help="model id for the provider (default: provider's)")
-    triage.add_argument(
+    command.add_argument("--model", help="model id for the provider (default: provider's)")
+    command.add_argument(
         "--effort", choices=["low", "medium", "high", "xhigh", "max"], default="high"
     )
-    triage.add_argument("--max-turns", type=int, default=40)
-    triage.add_argument(
+    command.add_argument("--max-turns", type=int, default=40)
+    command.add_argument(
         "--console",
         nargs="?",
         const="auto",
@@ -147,13 +142,36 @@ def _parser() -> argparse.ArgumentParser:
         help="send approvals and activity to the anysoar console: the running one "
         "(found through its console.env), or the one at URL with ANYSOAR_APPROVAL_TOKEN",
     )
-    triage.add_argument(
+    command.add_argument(
         "--server-arg",
         action="append",
         default=[],
         metavar="ARG",
         help="extra argument for anysoar-mcp, e.g. --server-arg=--policy=policy.toml",
     )
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="anysoar-agent",
+        description="Reference AI agent for anysoar. Write actions ask for your approval.",
+    )
+    commands = parser.add_subparsers(dest="command", required=True)
+    triage = commands.add_parser("triage", help="triage one phishing case")
+    triage.add_argument("case_uid", help="the case to triage, e.g. case-0001")
+    _common(triage, "replays a scripted triage of case-0002")
+    watcher = commands.add_parser(
+        "watch",
+        help="keep triaging open cases as they appear, following SOAR switches",
+    )
+    _common(watcher, "notes each case for an analyst")
+    watcher.add_argument(
+        "--status",
+        default=",".join(OPEN_STATUSES),
+        help="case statuses to work on (default: %(default)s)",
+    )
+    watcher.add_argument("--interval", type=float, default=5.0, help="seconds between checks")
+    watcher.add_argument("--max-cases", type=int, help="stop after this many cases")
     return parser
 
 
@@ -175,7 +193,15 @@ def _console(args: argparse.Namespace) -> tuple[str, str] | None:
         sys.exit(f"anysoar-agent: {exc}")
 
 
-async def _triage(args: argparse.Namespace, model: Model) -> AgentResult:
+@dataclass
+class _Session:
+    server: StdioServerParameters
+    reporter: ConsoleReporter | None
+    on_event: Callable[[AgentEvent], Awaitable[None]]
+
+
+def _session(args: argparse.Namespace) -> _Session:
+    """The MCP server to start, and where the agent's activity goes."""
     console = _console(args)
     server_args, env = list(args.server_arg), dict(os.environ)
     printer = event_printer()
@@ -196,24 +222,75 @@ async def _triage(args: argparse.Namespace, model: Model) -> AgentResult:
     server = StdioServerParameters(
         command=sys.executable, args=["-m", "anysoar.mcp", *server_args], env=env
     )
+    return _Session(server, reporter, on_event)
+
+
+async def _triage(args: argparse.Namespace, model: Model) -> AgentResult:
+    session = _session(args)
     try:
-        if reporter is not None:
-            await reporter.report("start", text=f"{model.name} triaging {args.case_uid}")
+        if session.reporter is not None:
+            await session.reporter.report("start", text=f"{model.name} triaging {args.case_uid}")
         return await run_triage(
             args.case_uid,
             model,
-            server,
+            session.server,
             terminal_approver(),
             max_turns=args.max_turns,
-            on_event=on_event,
+            on_event=session.on_event,
         )
     finally:
-        if reporter is not None:
-            await reporter.aclose()
+        if session.reporter is not None:
+            await session.reporter.aclose()
+
+
+async def _watch(args: argparse.Namespace) -> list[Handled]:
+    session = _session(args)
+    statuses = [s.strip() for s in args.status.split(",") if s.strip()]
+    shared = None if args.provider == "demo" else _model(args)
+
+    def model_for(case_uid: str) -> Model:
+        return shared if shared is not None else generic_demo_model(case_uid)
+
+    async def on_case(soar: str, case_uid: str, case: dict[str, Any]) -> None:
+        title = case.get("message") or ""
+        print(f"\n=== {soar}: {case_uid} {title}", file=sys.stderr)
+        if session.reporter is not None:
+            name = shared.name if shared is not None else "demo"
+            await session.reporter.report("start", text=f"{name} triaging {case_uid} on {soar}")
+
+    print(
+        f"anysoar-agent: watching for {', '.join(statuses)} cases every {args.interval:g}s "
+        "(Ctrl-C to stop)",
+        file=sys.stderr,
+    )
+    try:
+        async with Client(
+            session.server,
+            elicitation_callback=_elicitation_callback(terminal_approver()),
+            client_info=Implementation(name="anysoar-agent", version="0.0.0"),
+        ) as client:
+            return await watch(
+                client,
+                model_for,
+                statuses=statuses,
+                interval=args.interval,
+                max_cases=args.max_cases,
+                max_turns=args.max_turns,
+                on_event=session.on_event,
+                on_case=on_case,
+            )
+    finally:
+        if session.reporter is not None:
+            await session.reporter.aclose()
 
 
 def main(argv: Sequence[str] | None = None) -> None:
     args = _parser().parse_args(argv)
+    if args.command == "watch":
+        with contextlib.suppress(KeyboardInterrupt):
+            handled = asyncio.run(_watch(args))
+            print(f"anysoar-agent: triaged {len(handled)} cases", file=sys.stderr)
+        return
     model = _model(args)
     print(f"anysoar-agent: {model.name} triaging {args.case_uid}", file=sys.stderr)
     result = asyncio.run(_triage(args, model))

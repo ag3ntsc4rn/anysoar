@@ -7,7 +7,7 @@ import json
 from anysoar_agent.model import AssistantTurn, ToolCall, ToolResults, Transcript
 from anysoar_agent.scripted import ScriptedModel
 
-__all__ = ["SYSTEM_PROMPT", "demo_model", "task"]
+__all__ = ["SYSTEM_PROMPT", "demo_model", "generic_demo_model", "task"]
 
 SYSTEM_PROMPT = """\
 You are a SOC analyst agent triaging user-reported phishing. You work through anysoar, which \
@@ -122,6 +122,54 @@ def demo_model() -> ScriptedModel:
                     "Actions: findings noted on case-0002; block-sender playbook requested; "
                     "case close requested (each subject to your approval)."
                 ),
+            ),
+        ]
+    )
+
+
+def generic_demo_model(case_uid: str) -> ScriptedModel:
+    """A scripted triage that works on any case of any SOAR: read it, note it, finish.
+
+    The note is a write, so it goes through approval. For offline demos of agents that work
+    through many cases, e.g. ``anysoar-agent watch --provider demo``.
+    """
+
+    def turn(*calls: tuple[str, dict[str, object]], reasoning: str = "") -> AssistantTurn:
+        return AssistantTurn(
+            stop="tool_use",
+            reasoning=reasoning,
+            tool_calls=tuple(
+                ToolCall(f"demo-{name}-{i}", name, dict(args))
+                for i, (name, args) in enumerate(calls)
+            ),
+            model="demo",
+        )
+
+    def note_from_case(transcript: Transcript) -> AssistantTurn:
+        last = transcript[-1]
+        assert isinstance(last, ToolResults)
+        result = last.results[0]
+        if result.is_error:
+            return AssistantTurn(stop="end", model="demo", text=f"Could not read {case_uid}.")
+        case = json.loads(result.content)
+        title = case.get("message") or case_uid
+        observables = len(case.get("observables") or [])
+        comment = (
+            f"Triage (anysoar demo agent): reviewed '{title}' with {observables} indicators. "
+            "Recommended: an analyst confirms the verdict."
+        )
+        return turn(
+            ("add_note", {"case_uid": case_uid, "comment": comment}),
+            reasoning="Recording what I reviewed for an analyst.",
+        )
+
+    return ScriptedModel(
+        [
+            turn(("describe_soar", {}), reasoning="Checking what this SOAR offers."),
+            turn(("get_case", {"case_uid": case_uid})),
+            note_from_case,
+            AssistantTurn(
+                stop="end", model="demo", text=f"Noted {case_uid} for an analyst to confirm."
             ),
         ]
     )

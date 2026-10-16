@@ -65,9 +65,9 @@ class SwitchableDriver(Driver):
     """Sends each call to the driver the switch currently names.
 
     The driver is chosen when a call starts, so a call already in progress finishes on the
-    SOAR it started on. :meth:`describe` reports the active driver, including its name and
-    capabilities; calls it does not support raise
-    :class:`~anysoar.errors.CapabilityNotSupportedError` from that driver.
+    SOAR it started on. :meth:`describe` reports the active driver's capabilities under the
+    name the switch uses for it, so two SOARs of the same kind can be told apart; calls it
+    does not support raise :class:`~anysoar.errors.CapabilityNotSupportedError`.
 
     Args:
         drivers: The SOARs to switch between, by name. Closing this driver closes them all.
@@ -92,7 +92,10 @@ class SwitchableDriver(Driver):
         return self.drivers[name]
 
     async def describe(self) -> DriverInfo:
-        return await self.active.describe()
+        """The active driver's description, named as the switch names it."""
+        driver = self.active
+        info = await driver.describe()
+        return info.model_copy(update={"name": self.name})
 
     async def aclose(self) -> None:
         for driver in self.drivers.values():
