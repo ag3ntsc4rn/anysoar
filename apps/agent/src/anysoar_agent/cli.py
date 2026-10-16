@@ -61,9 +61,9 @@ def event_printer(out: TextIO = sys.stderr) -> Callable[[AgentEvent], None]:
 
     def show(event: AgentEvent) -> None:
         if event.kind == "reasoning":
-            print(f"  (thinking) {event.text}", file=out)
+            print(_indent(event.text, "  (thinking) "), file=out)
         elif event.kind == "text":
-            print(f"  {event.text}", file=out)
+            print(_indent(event.text, "  "), file=out)
         elif event.kind == "tool_call" and event.call is not None:
             args = json.dumps(event.call.arguments, separators=(",", ":"))
             print(f"-> {event.call.name} {args}", file=out)
@@ -75,6 +75,13 @@ def event_printer(out: TextIO = sys.stderr) -> Callable[[AgentEvent], None]:
         out.flush()
 
     return show
+
+
+def _indent(text: str, first: str) -> str:
+    """Indent ``text`` under a prefix, dropping blank lines."""
+    lines = [line.strip() for line in text.strip().splitlines() if line.strip()]
+    pad = " " * len(first)
+    return "\n".join(f"{first if i == 0 else pad}{line}" for i, line in enumerate(lines))
 
 
 async def run_triage(
@@ -159,6 +166,12 @@ def main(argv: Sequence[str] | None = None) -> None:
             max_turns=args.max_turns,
             on_event=event_printer(),
         )
+    )
+    usage = result.usage
+    print(
+        f"anysoar-agent: {result.turns} turns; tokens in {usage.input_tokens} "
+        f"({usage.cached_input_tokens} cached), out {usage.output_tokens}",
+        file=sys.stderr,
     )
     print(result.text)
     if result.stop != "end":

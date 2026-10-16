@@ -62,6 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - A case's uid is its `metadata.uid`, since an OCSF Incident Finding has no uid of its own.
+- `anysoar-mcp` logs only warnings from the MCP SDK; its own messages stay at info.
 - The `shuffle` extra now depends on `httpx2` (used by the MCP and Anthropic SDKs) instead of
   `httpx`.
 

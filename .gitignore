@@ -58,3 +58,6 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 $RECYCLE.BIN/
+
+# Local Shuffle lab secrets (demo/shuffle/up.sh)
+demo/shuffle/.env.local

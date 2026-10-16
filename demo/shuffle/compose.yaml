@@ -1,0 +1,133 @@
+# A local Shuffle SOAR for developing and demoing anysoar's Shuffle driver.
+# Start it with ./up.sh, which generates the secrets this file needs into .env.local.
+#
+# Differences from Shuffle's own docker-compose.yml: pinned versions, ports bound to
+# 127.0.0.1 only, OpenSearch not published and given a 1 GB heap, telemetry off, the admin
+# user and API key created at startup, and the amd64-only shuffle-security UI left out.
+# Orborus runs workflow containers directly instead of as Docker Swarm services (upstream's
+# SHUFFLE_SWARM_CONFIG=run switches the whole Docker engine into Swarm mode), and the Tenzir
+# pipeline node it would otherwise start is disabled, as is the self-test workflow it runs on a
+# loop.
+#
+# The backend and orborus mount the Docker socket: Shuffle starts a container for each
+# workflow step. That gives them control of Docker on this machine; use it as a local lab.
+
+name: anysoar-shuffle
+
+x-shuffle-env: &shuffle-env
+  ENVIRONMENT_NAME: Shuffle
+  BASE_URL: http://shuffle-backend:5001
+  DOCKER_API_VERSION: "1.44"
+  SHUFFLE_BASE_IMAGE_REPOSITORY: frikky
+  SHUFFLE_CONTAINER_AUTO_CLEANUP: "true"
+  SHUFFLE_LOGS_DISABLED: "true"
+  SHUFFLE_STATS_DISABLED: "true"
+  SHUFFLE_SKIPSSL_VERIFY: "true"
+  TZ: UTC
+
+services:
+  opensearch:
+    image: opensearchproject/opensearch:3.2.0
+    hostname: shuffle-opensearch
+    environment:
+      OPENSEARCH_JAVA_OPTS: -Xms1g -Xmx1g
+      OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${SHUFFLE_OPENSEARCH_PASSWORD:?run ./up.sh}
+      DISABLE_PERFORMANCE_ANALYZER_AGENT_CLI: "true"
+      bootstrap.memory_lock: "true"
+      cluster.name: shuffle-cluster
+      cluster.routing.allocation.disk.threshold_enabled: "false"
+      discovery.type: single-node
+      node.store.allow_mmap: "false"
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 65536, hard: 65536 }
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    networks: [shuffle]
+    healthcheck:
+      # The password comes from the container's environment; nothing secret is in this file.
+      test: ["CMD-SHELL", "curl -skf -u admin:$${OPENSEARCH_INITIAL_ADMIN_PASSWORD} 'https://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s'"] # gitleaks:allow
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
+
+  backend:
+    image: ghcr.io/shuffle/shuffle-backend:${SHUFFLE_VERSION:-2.3.0}
+    hostname: shuffle-backend
+    ports:
+      - 127.0.0.1:${SHUFFLE_API_PORT:-5001}:5001
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - shuffle-apps:/shuffle-apps
+      - shuffle-files:/shuffle-files
+    environment:
+      <<: *shuffle-env
+      SHUFFLE_APP_HOTLOAD_FOLDER: /shuffle-apps
+      SHUFFLE_FILE_LOCATION: /shuffle-files
+      SHUFFLE_APP_DOWNLOAD_LOCATION: https://github.com/shuffle/python-apps
+      SHUFFLE_APP_FORCE_UPDATE: "false"
+      SHUFFLE_DEFAULT_USERNAME: ${SHUFFLE_ADMIN_USERNAME:?run ./up.sh}
+      SHUFFLE_DEFAULT_PASSWORD: ${SHUFFLE_ADMIN_PASSWORD:?run ./up.sh}
+      SHUFFLE_DEFAULT_APIKEY: ${SHUFFLE_API_KEY:?run ./up.sh}
+      SHUFFLE_ENCRYPTION_MODIFIER: ${SHUFFLE_ENCRYPTION_MODIFIER:?run ./up.sh}
+      SHUFFLE_ELASTIC: "true"
+      SHUFFLE_OPENSEARCH_URL: https://shuffle-opensearch:9200
+      SHUFFLE_OPENSEARCH_USERNAME: admin
+      SHUFFLE_OPENSEARCH_PASSWORD: ${SHUFFLE_OPENSEARCH_PASSWORD}
+      SHUFFLE_OPENSEARCH_SKIPSSL_VERIFY: "true"
+      SHUFFLE_USE_GCHR_OVERRIDE_FOR_AUTODEPLOY: "true"
+      SHUFFLE_CHAT_DISABLED: "true"
+      # Shuffle's self-test runs a many-step workflow on a loop: constant container churn.
+      SHUFFLE_HEALTHCHECK_DISABLED: "true"
+      SHUFFLE_PROTECTED_CLEANUP_DISABLED: "true"
+      SSO_REDIRECT_URL: http://localhost:${SHUFFLE_UI_PORT:-3001}
+      LIQUID_SANITIZE_INPUT: "true"
+      IS_KUBERNETES: "false"
+    networks: [shuffle]
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    image: ghcr.io/shuffle/shuffle-frontend:${SHUFFLE_VERSION:-2.3.0}
+    hostname: shuffle-frontend
+    ports:
+      - 127.0.0.1:${SHUFFLE_UI_PORT:-3001}:80
+    environment:
+      BACKEND_HOSTNAME: shuffle-backend
+    networks: [shuffle]
+    depends_on: [backend]
+    restart: unless-stopped
+
+  orborus:
+    image: ghcr.io/shuffle/shuffle-orborus:${SHUFFLE_VERSION:-2.3.0}
+    container_name: anysoar-shuffle-orborus
+    hostname: shuffle-orborus
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      <<: *shuffle-env
+      ORG_ID: Shuffle
+      # Workers share this container's network namespace, found by this name.
+      ORBORUS_CONTAINER_NAME: anysoar-shuffle-orborus
+      SHUFFLE_SKIP_PIPELINES: "true"
+      SHUFFLE_WORKER_IMAGE: ghcr.io/shuffle/shuffle-worker:${SHUFFLE_VERSION:-2.3.0}
+      SHUFFLE_APP_SDK_TIMEOUT: "300"
+      SHUFFLE_ORBORUS_EXECUTION_CONCURRENCY: "5"
+    security_opt:
+      - seccomp:unconfined
+    networks: [shuffle]
+    depends_on: [backend]
+    restart: unless-stopped
+
+volumes:
+  opensearch-data:
+  shuffle-apps:
+  shuffle-files:
+
+networks:
+  shuffle:
+    name: anysoar-shuffle

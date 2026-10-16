@@ -126,7 +126,8 @@ async def _serve(args: argparse.Namespace, policy: Policy) -> None:
 def main(argv: Sequence[str] | None = None) -> None:
     args = _parser().parse_args(argv)
     # stdout carries the MCP protocol, so everything else goes to stderr.
-    logging.basicConfig(level=logging.INFO, stream=sys.stderr, format="%(name)s: %(message)s")
+    logging.basicConfig(level=logging.WARNING, stream=sys.stderr, format="%(name)s: %(message)s")
+    logging.getLogger("anysoar").setLevel(logging.INFO)  # the SDK's request logs stay quiet
     try:
         policy = load_policy(args.policy) if args.policy else Policy()
     except (OSError, ValueError, tomllib.TOMLDecodeError) as exc:
