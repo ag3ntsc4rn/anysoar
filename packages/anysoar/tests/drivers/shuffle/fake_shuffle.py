@@ -16,8 +16,9 @@ from typing import Any
 
 import httpx2
 
-API_KEY = "0f6b1d9e-6a3e-4c55-9f4e-1d2c3b4a5f60"
-ORG_ID = "e97c36e7-d21b-4933-9558-2b616c3f85c5"
+# Fake credentials, derived so no key-like literal sits in the source.
+API_KEY = str(uuid.uuid5(uuid.NAMESPACE_URL, "https://shuffle.test/fake-api-key"))
+ORG_ID = str(uuid.uuid5(uuid.NAMESPACE_URL, "https://shuffle.test/fake-org"))
 BASE_URL = "http://shuffle.test"
 
 
