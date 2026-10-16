@@ -24,6 +24,7 @@ from anysoar.policy.audit import (
     audit_actor,
 )
 from anysoar.policy.guard import GuardedDriver
+from anysoar.policy.http_approver import HttpApprover
 from anysoar.policy.kill_switch import KillSwitch
 from anysoar.policy.rules import DEFAULT_TIER_DECISIONS, Action, Decision, Policy
 
@@ -39,6 +40,7 @@ __all__ = [
     "AuditLog",
     "Decision",
     "GuardedDriver",
+    "HttpApprover",
     "JsonlAuditLog",
     "KillSwitch",
     "MemoryAuditLog",
