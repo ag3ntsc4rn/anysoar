@@ -61,3 +61,7 @@ $RECYCLE.BIN/
 
 # Local Shuffle lab secrets (demo/shuffle/up.sh)
 demo/shuffle/.env.local
+
+# TheHive lab: generated secrets and Cortex analyzer job files
+demo/thehive/.env.local
+demo/thehive/.cortex-jobs/
