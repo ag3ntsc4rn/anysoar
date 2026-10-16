@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Start the local Shuffle lab. Generates per-install secrets into .env.local on first run.
+# --ui also starts Shuffle Security, Shuffle's incident UI.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -26,7 +27,10 @@ source "$env_file"
 set +a
 api="http://127.0.0.1:${SHUFFLE_API_PORT:-5001}/api/v1"
 
-docker compose --env-file "$env_file" up -d
+profile=()
+[[ ${1:-} == --ui ]] && profile=(--profile ui)
+
+docker compose --env-file "$env_file" "${profile[@]}" up -d
 
 printf 'Waiting for the Shuffle API'
 for _ in $(seq 1 90); do
@@ -64,6 +68,7 @@ cat <<EOF
 
 Shuffle is running.
   Web UI:  http://localhost:${SHUFFLE_UI_PORT:-3001}  (user: $SHUFFLE_ADMIN_USERNAME, password in $PWD/$env_file)
+$([[ ${#profile[@]} -gt 0 ]] && echo "  Incidents UI (Shuffle Security): http://localhost:${SHUFFLE_SECURITY_UI_PORT:-3002}")
   API:     $api
 
 For anysoar's Shuffle driver:
