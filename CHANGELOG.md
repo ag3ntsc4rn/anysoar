@@ -21,8 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     them names are closed as Other with a `verdict:<name>` tag. The closing comment is the
     case summary. `get_case` includes comments as notes, observables as indicators, and the
     alerts the case was made from as its findings.
+  - Indicators are enriched by Cortex analyzers, run through TheHive (`enrich_indicator`).
+    TheHive analyzes only observables on its alerts and cases, so the driver runs every
+    analyzer for the indicator's type on the newest matching observable and waits for the
+    reports (60 seconds by default). The reputation is the worst analyzer verdict (safe,
+    suspicious or malicious); analyzers that fail or do not finish are reported as such.
+    TheHive without Cortex analyzers does not offer enrichment.
   - The contract suite runs against a real TheHive with `ANYSOAR_LIVE_THEHIVE=1`, such as
-    the local lab in `demo/thehive`.
+    the local lab in `demo/thehive`, where it creates and deletes synthetic alerts and
+    cases and runs the lab's analyzers.
 
 ## [0.3.0] - 2026-10-16
 

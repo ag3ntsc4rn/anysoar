@@ -14,6 +14,7 @@ from anysoar.errors import DriverError, NotFoundError
 from anysoar.interface import AlertQuery, Capability
 from anysoar.models import (
     DetectionFindingStatusId,
+    Observable,
     ObservableTypeId,
     SeverityId,
     User,
@@ -62,6 +63,7 @@ class TestConfiguration:
             Capability.GET_CASE,
             Capability.ADD_NOTE,
             Capability.CLOSE_CASE,
+            Capability.ENRICH_INDICATOR,
         }
 
     def test_reads_environment(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -322,3 +324,10 @@ class TestLiveTheHiveContract(DriverContract):
     @pytest.fixture
     def case_uid(self, lab: dict[str, list[str]]) -> str:
         return lab["case"][0]
+
+    async def test_analyzers_report(self, driver: TheHiveDriver) -> None:
+        """The contract only checks the indicator comes back; here the analyzers must run."""
+        indicator = Observable(type_id=ObservableTypeId.IP_ADDRESS, value="192.0.2.1")
+        result = await driver.enrich_indicator(indicator)
+        assert result.enrichments, "no analyzer ran; are Cortex analyzers enabled?"
+        assert all(e.short_desc != "did not finish in time" for e in result.enrichments)

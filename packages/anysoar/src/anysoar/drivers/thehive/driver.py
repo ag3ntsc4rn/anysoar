@@ -1,17 +1,27 @@
-"""The TheHive driver: TheHive alerts and cases as anysoar alerts and cases."""
+"""The TheHive driver: TheHive alerts and cases, and Cortex analyzers for enrichment."""
 
 from __future__ import annotations
 
+import asyncio
 import heapq
 import os
+import time
 from typing import TYPE_CHECKING, Any
 
 from anysoar import __version__
-from anysoar.drivers.thehive import alerts, cases
+from anysoar.drivers.thehive import alerts, cases, enrichment
 from anysoar.drivers.thehive.client import TheHiveAPIError, TheHiveClient
 from anysoar.errors import DriverError, NotFoundError
-from anysoar.interface import AlertQuery, CaseQuery, Driver, DriverInfo, Page
-from anysoar.models import DetectionFinding, IncidentFinding, Note, VerdictId
+from anysoar.interface import (
+    AlertQuery,
+    Capability,
+    CaseQuery,
+    Driver,
+    DriverInfo,
+    IndicatorEnrichment,
+    Page,
+)
+from anysoar.models import DetectionFinding, IncidentFinding, Note, Observable, VerdictId
 
 if TYPE_CHECKING:
     import httpx2
@@ -31,6 +41,12 @@ class TheHiveDriver(Driver):
     leaves out observables, comments and a case's alerts, which cost queries per record;
     :meth:`get_alert` and :meth:`get_case` include them.
 
+    :meth:`enrich_indicator` runs Cortex analyzers through TheHive, which runs them only on
+    observables of its alerts and cases: it finds the newest observable with the indicator's
+    type and value, runs every analyzer for that type on it and waits for the reports (see
+    :mod:`anysoar.drivers.thehive.enrichment`). An indicator TheHive has no observable for
+    gets no enrichments. Instances without Cortex analyzers do not offer enrichment.
+
     Args:
         base_url: TheHive's address, e.g. ``http://127.0.0.1:9000``. Defaults to the
             ``THEHIVE_URL`` environment variable.
@@ -39,6 +55,8 @@ class TheHiveDriver(Driver):
         organisation: The organisation to work in, for users in several. Defaults to
             ``THEHIVE_ORGANISATION``, or the user's default organisation.
         timeout: Seconds to wait for each request.
+        enrich_timeout: Seconds :meth:`enrich_indicator` waits for analyzers to finish.
+        poll_interval: Seconds between checks on running analyzers.
         transport: An ``httpx2`` transport, for tests.
     """
 
@@ -51,6 +69,8 @@ class TheHiveDriver(Driver):
         *,
         organisation: str | None = None,
         timeout: float = 30.0,
+        enrich_timeout: float = 60.0,
+        poll_interval: float = 2.0,
         transport: httpx2.AsyncBaseTransport | None = None,
     ) -> None:
         base_url = base_url or os.environ.get("THEHIVE_URL")
@@ -66,7 +86,10 @@ class TheHiveDriver(Driver):
             timeout=timeout,
             transport=transport,
         )
+        self._enrich_timeout = enrich_timeout
+        self._poll_interval = poll_interval
         self._version: str | None = None
+        self._has_analyzers: bool | None = None
 
     async def describe(self) -> DriverInfo:
         if self._version is None:
@@ -76,9 +99,12 @@ class TheHiveDriver(Driver):
                 pass  # the version is nice to have; the real calls report what is wrong
             else:
                 self._version = ((status or {}).get("versions") or {}).get("TheHive")
+        capabilities = self.implemented_capabilities()
+        if not await self._analyzers_available():
+            capabilities -= {Capability.ENRICH_INDICATOR}
         return DriverInfo(
             name=self.name,
-            capabilities=self.implemented_capabilities(),
+            capabilities=capabilities,
             driver_version=__version__,
             soar_product="TheHive",
             soar_version=self._version,
@@ -86,6 +112,20 @@ class TheHiveDriver(Driver):
 
     async def aclose(self) -> None:
         await self._client.aclose()
+
+    async def _analyzers_available(self) -> bool:
+        """Whether TheHive has Cortex analyzers to run. Assumed so if it cannot be asked."""
+        if self._has_analyzers is None:
+            try:
+                found = await self._client.request("GET", "/api/v1/connector/cortex/analyzer")
+            except TheHiveAPIError as exc:
+                if not exc.is_not_found:
+                    return True  # e.g. a bad key: let the real call report it
+                found = []  # the Cortex connector is turned off
+            except DriverError:
+                return True
+            self._has_analyzers = bool(found)
+        return self._has_analyzers
 
     # -- Alerts ---------------------------------------------------------------------------
 
@@ -215,6 +255,77 @@ class TheHiveDriver(Driver):
             raise NotFoundError("case", case_uid)  # anysoar uses case numbers, e.g. 42
         return await self._get("case", case_uid)
 
+    # -- Indicators -----------------------------------------------------------------------
+
+    async def enrich_indicator(self, indicator: Observable) -> IndicatorEnrichment:
+        result = IndicatorEnrichment(observable=indicator.model_copy(deep=True))
+        types = enrichment.data_types(indicator)
+        if indicator.value is None or not types:
+            return result
+        found = await self._client.query(
+            "anysoar-find-observable",
+            [
+                {"_name": "listObservable"},
+                {
+                    "_name": "filter",
+                    "_and": [
+                        {"_in": {"_field": "dataType", "_values": types}},
+                        {"_eq": {"_field": "data", "_value": indicator.value}},
+                    ],
+                },
+                {"_name": "sort", "_fields": [{"_createdAt": "desc"}]},
+                {"_name": "page", "from": 0, "to": 1},
+            ],
+        )
+        if not found:
+            return result  # TheHive can only analyze indicators on its alerts and cases
+        observable = found[0]
+        analyzers = await self._client.request(
+            "GET", f"/api/v1/connector/cortex/analyzer/type/{observable['dataType']}"
+        )
+        jobs = []
+        for analyzer in analyzers:
+            body = {"analyzerId": analyzer["id"], "artifactId": observable["_id"]}
+            cortex_ids = analyzer.get("cortexIds") or []
+            if cortex_ids:
+                body["cortexId"] = cortex_ids[0]
+            jobs.append(
+                await self._client.request("POST", "/api/v1/connector/cortex/job", json=body)
+            )
+        jobs = await self._wait_for(jobs)
+
+        reports: dict[str, Any] = {}
+        if jobs:  # the taxonomies are on the observable, by analyzer name
+            refreshed = await self._client.request("GET", f"/api/v1/observable/{observable['_id']}")
+            reports = refreshed.get("reports") or {}
+        taxonomies = [enrichment.taxonomies(job, reports) for job in jobs]
+        name = indicator.name or observable["dataType"]
+        return IndicatorEnrichment(
+            observable=result.observable.model_copy(
+                update={"reputation": enrichment.reputation([t for ts in taxonomies for t in ts])}
+            ),
+            enrichments=[
+                enrichment.to_enrichment(job, found, name=name, value=indicator.value)
+                for job, found in zip(jobs, taxonomies, strict=True)
+            ],
+        )
+
+    async def _wait_for(self, jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """The jobs once all have finished, or as they are when the enrich timeout passes."""
+        deadline = time.monotonic() + self._enrich_timeout
+        while True:
+            jobs = [
+                job
+                if job.get("status") in _FINISHED_JOBS
+                else await self._client.request("GET", f"/api/v1/connector/cortex/job/{job['_id']}")
+                for job in jobs
+            ]
+            if all(j.get("status") in _FINISHED_JOBS for j in jobs):
+                return jobs
+            if time.monotonic() >= deadline:
+                return jobs
+            await asyncio.sleep(self._poll_interval)
+
     async def _get(self, kind: str, uid: str) -> dict[str, Any]:
         try:
             found: dict[str, Any] = await self._client.request("GET", f"/api/v1/{kind}/{uid}")
@@ -224,6 +335,8 @@ class TheHiveDriver(Driver):
             raise
         return found
 
+
+_FINISHED_JOBS = {"Success", "Failure"}
 
 _OLDEST_FIRST = (
     {"_name": "sort", "_fields": [{"_createdAt": "asc"}]},

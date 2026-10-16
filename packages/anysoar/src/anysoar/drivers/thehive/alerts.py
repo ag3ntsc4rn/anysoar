@@ -33,6 +33,7 @@ from anysoar.models import (
 )
 
 __all__ = [
+    "OBSERVABLE_TYPES",
     "PRODUCT",
     "SEVERITIES",
     "alert_status_filter",
@@ -79,7 +80,7 @@ _STATUS_CLAUSES = {
 _VERDICTS = {"FalsePositive": VerdictId.FALSE_POSITIVE, "Duplicate": VerdictId.DUPLICATE}
 
 # TheHive's built-in observable types. OCSF has no domain type; hostnames cover domains.
-_OBSERVABLE_TYPES = {
+OBSERVABLE_TYPES = {
     "ip": ObservableTypeId.IP_ADDRESS,
     "domain": ObservableTypeId.HOSTNAME,
     "fqdn": ObservableTypeId.HOSTNAME,
@@ -131,7 +132,7 @@ def to_observable(observable: dict[str, Any]) -> Observable:
     data_type = str(observable.get("dataType") or "")
     data = observable.get("data")
     return Observable(
-        type_id=_OBSERVABLE_TYPES.get(data_type, ObservableTypeId.OTHER),
+        type_id=OBSERVABLE_TYPES.get(data_type, ObservableTypeId.OTHER),
         type=data_type or None,
         value=str(data) if data is not None else None,
     )
