@@ -258,3 +258,18 @@ td.details { color: var(--muted); }
 .badge.completed { color: var(--ok); background: var(--ok-bg); }
 .badge.denied, .badge.failed { color: var(--bad); background: var(--bad-bg); }
 code { font-family: ui-monospace, "SF Mono", monospace; font-size: 0.9em; }
+
+/* -- SOAR switch -------------------------------------------------------------------- */
+
+.soar { display: inline-flex; align-items: center; gap: 0.35rem; margin-left: 0.5rem; }
+.soar[hidden] { display: none; }
+.soar-label { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.soar button {
+  padding: 0.25rem 0.7rem;
+  font-size: 0.85rem;
+  background: transparent;
+  color: var(--muted);
+  border-color: var(--border);
+}
+.soar button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+td.soar-cell { white-space: nowrap; font-weight: 600; }

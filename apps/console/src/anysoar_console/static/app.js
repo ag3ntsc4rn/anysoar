@@ -176,6 +176,7 @@ function auditRow(event) {
   if (event.duration_ms != null) details.push(`${event.duration_ms} ms`);
   if (event.actor) details.push(event.actor);
   cell("when", event.time ? new Date(event.time).toLocaleTimeString() : "");
+  cell("soar-cell", event.driver);
   cell("", badge);
   cell("op", event.capability);
   cell("", event.summary);
@@ -189,6 +190,35 @@ function addAudit(event) {
   while (body.children.length > 200) body.lastElementChild.remove();
   $("audit-table").hidden = false;
   $("audit-empty").hidden = true;
+}
+
+// -- SOAR switch ----------------------------------------------------------------------
+
+function showSoar(state) {
+  const group = $("soar");
+  group.hidden = !state.available;
+  if (!state.available) return;
+  const label = group.querySelector(".soar-label");
+  group.replaceChildren(label);
+  for (const name of state.choices) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = name;
+    button.setAttribute("aria-pressed", String(name === state.active));
+    button.addEventListener("click", () => switchSoar(name, state.active));
+    group.append(button);
+  }
+}
+
+async function switchSoar(name, active) {
+  if (name === active) return;
+  if (!confirm(`Switch anysoar to ${name}? Agents keep running; their next calls go to ${name}.`)) return;
+  try {
+    showSoar(await call("/ui/soar", { method: "POST", body: JSON.stringify({ soar: name }) }));
+    toast(`Switched to ${name}`);
+  } catch (error) {
+    toast(`Could not switch: ${error.message}`);
+  }
 }
 
 // -- Kill switch ----------------------------------------------------------------------
@@ -228,6 +258,7 @@ async function start() {
   state.agent.forEach(addAgent);
   state.audit.forEach(addAudit);
   showSwitch(state.kill_switch);
+  showSoar(state.soar);
   $("stop").addEventListener("click", () => setSwitch(true));
   $("resume").addEventListener("click", () => setSwitch(false));
 
@@ -243,6 +274,7 @@ async function start() {
   stream.addEventListener("agent", (event) => addAgent(JSON.parse(event.data).data));
   stream.addEventListener("audit", (event) => addAudit(JSON.parse(event.data).data));
   stream.addEventListener("kill_switch", (event) => showSwitch(JSON.parse(event.data).data));
+  stream.addEventListener("soar", (event) => showSoar(JSON.parse(event.data).data));
   stream.addEventListener("approval", (event) => {
     const approval = JSON.parse(event.data).data;
     approvals.set(approval.id, approval);

@@ -14,6 +14,9 @@
       <span id="connection-label">Connecting…</span>
       <span class="sep">·</span>
       <span>Deciding as <strong id="operator">…</strong></span>
+      <span id="soar" class="soar" role="group" aria-label="Active SOAR" hidden>
+        <span class="soar-label">SOAR</span>
+      </span>
       <button id="stop" class="stop" type="button" hidden>Stop all actions</button>
     </div>
   </header>
@@ -54,7 +57,7 @@
       <p class="hint">What anysoar allowed, denied and ran, newest first.</p>
       <div class="table-wrap">
         <table id="audit-table" hidden>
-          <thead><tr><th>Time</th><th>Event</th><th>Operation</th><th>Action</th><th>Details</th></tr></thead>
+          <thead><tr><th>Time</th><th>SOAR</th><th>Event</th><th>Operation</th><th>Action</th><th>Details</th></tr></thead>
           <tbody id="audit"></tbody>
         </table>
       </div>

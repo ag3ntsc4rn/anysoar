@@ -7,10 +7,11 @@ import json
 from pathlib import Path
 from typing import Any
 
+from anysoar.drivers import SoarSwitch
 from anysoar.policy import KillSwitch
 from anysoar_console.store import EventBus, Feed
 
-__all__ = ["follow_audit_log", "watch_kill_switch"]
+__all__ = ["follow_audit_log", "soar_state", "watch_kill_switch", "watch_soar_switch"]
 
 _AUDIT_FIELDS = (
     "call_uid",
@@ -86,4 +87,21 @@ async def watch_kill_switch(switch: KillSwitch, bus: EventBus, *, interval: floa
             state = {"available": True, "engaged": reason is not None, "reason": reason}
             bus.publish("kill_switch", state)
             last, first = reason, False
+        await asyncio.sleep(interval)
+
+
+def soar_state(switch: SoarSwitch | None) -> dict[str, Any]:
+    if switch is None:
+        return {"available": False, "active": None, "choices": []}
+    return {"available": True, "active": switch.active, "choices": switch.choices}
+
+
+async def watch_soar_switch(switch: SoarSwitch, bus: EventBus, *, interval: float = 1.0) -> None:
+    """Publish ``soar`` events whenever the active SOAR changes, wherever it was switched."""
+    last: str | None = None
+    while True:
+        active = switch.active
+        if active != last:
+            bus.publish("soar", soar_state(switch))
+            last = active
         await asyncio.sleep(interval)

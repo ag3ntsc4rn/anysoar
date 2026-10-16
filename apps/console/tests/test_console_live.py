@@ -4,6 +4,7 @@ from pathlib import Path
 
 import httpx2
 
+from anysoar.drivers import SoarSwitch, SwitchableDriver
 from anysoar.drivers.mock import MockDriver
 from anysoar.errors import DenialReason, PolicyDeniedError
 from anysoar.policy import GuardedDriver, KillSwitch
@@ -181,4 +182,45 @@ def test_paths_are_optional(tmp_path: Path) -> None:
         client.get(f"/login?token={config.login_token}")
         state = client.get("/ui/state").json()
         assert state["kill_switch"] == {"available": False, "engaged": False, "reason": None}
+        assert state["soar"] == {"available": False, "active": None, "choices": []}
         assert state["audit"] == []
+
+
+class TestSoarSwitch:
+    async def test_switch_from_the_console_moves_anysoar(self, console: Console) -> None:
+        path = console.config.soar_switch
+        assert path is not None
+        soar = SwitchableDriver(
+            {"mock": MockDriver(), "shuffle": MockDriver()},
+            SoarSwitch(path, ["mock", "shuffle"], default="mock"),
+        )
+        person = await console.person()
+        state = (await person.get("/ui/state")).json()["soar"]
+        assert state == {"available": True, "active": "mock", "choices": ["mock", "shuffle"]}
+        assert soar.switch.active == "mock"
+
+        switched = await person.post("/ui/soar", json={"soar": "shuffle"})
+        assert switched.json()["active"] == "shuffle"
+        assert soar.switch.active == "shuffle"
+        assert path.read_text() == "shuffle\n"
+
+        assert (await person.post("/ui/soar", json={"soar": "tines"})).status_code == 400
+
+    async def test_only_people_can_switch(self, console: Console) -> None:
+        async with console.submitter() as agent:
+            response = await agent.post(
+                "/ui/soar", json={"soar": "shuffle"}, headers={CSRF_HEADER: "1"}
+            )
+            assert response.status_code == 401
+        person = await console.person()
+        del person.headers[CSRF_HEADER]
+        assert (await person.post("/ui/soar", json={"soar": "shuffle"})).status_code == 401
+        path = console.config.soar_switch
+        assert path is not None and not path.exists()
+
+    async def test_reflects_switches_made_elsewhere(self, console: Console) -> None:
+        path = console.config.soar_switch
+        assert path is not None
+        path.write_text("shuffle\n")
+        person = await console.person()
+        assert (await person.get("/ui/state")).json()["soar"]["active"] == "shuffle"

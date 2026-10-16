@@ -58,14 +58,31 @@ def main(argv: Sequence[str] | None = None) -> None:
         default=os.environ.get("ANYSOAR_KILL_SWITCH") or state_dir() / "STOP",
         help="anysoar's kill switch file (default: %(default)s, as anysoar-mcp)",
     )
+    parser.add_argument(
+        "--soars",
+        default=os.environ.get("ANYSOAR_DRIVER", "mock,shuffle"),
+        help="the SOARs anysoar-mcp serves, as its --driver (default: %(default)s); "
+        "with more than one, the console can switch between them",
+    )
+    parser.add_argument(
+        "--soar-switch",
+        type=Path,
+        default=os.environ.get("ANYSOAR_SOAR_SWITCH") or state_dir() / "SOAR",
+        help="anysoar's SOAR switch file (default: %(default)s, as anysoar-mcp)",
+    )
     args = parser.parse_args(argv)
 
     with socket.socket() as probe:
         if probe.connect_ex((HOST, args.port)) == 0:
             sys.exit(f"anysoar-console: port {args.port} is in use; pick another with --port")
 
+    soars = tuple(n.strip() for n in args.soars.split(",") if n.strip())
     config = ConsoleConfig(
-        operator=args.operator, audit_log=args.audit_log, kill_switch=args.kill_switch
+        operator=args.operator,
+        audit_log=args.audit_log,
+        kill_switch=args.kill_switch,
+        soar_switch=args.soar_switch,
+        soars=soars,
     )
     url = f"http://{HOST}:{args.port}"
     connection = connection_file()
