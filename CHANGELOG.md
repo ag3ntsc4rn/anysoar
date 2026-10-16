@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-16
+
+### Fixed
+
+- The package description on PyPI (the package README) still said the package only reserved
+  its name and called the MCP server and Shuffle driver "planned". It now describes what the
+  package ships, with an install guide, a working example and links that work on PyPI. A
+  test keeps it in step with the package.
+
 ## [0.2.0] - 2026-10-16
 
 ### Added
@@ -118,7 +127,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial package skeleton exposing `anysoar.__version__`, published to reserve the name.
 - Optional extras `mcp` and `shuffle` declared for upcoming features.
 
-[Unreleased]: https://github.com/ag3ntsc4rn/anysoar/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/ag3ntsc4rn/anysoar/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/ag3ntsc4rn/anysoar/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/ag3ntsc4rn/anysoar/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ag3ntsc4rn/anysoar/compare/v0.0.1...v0.1.0
 [0.0.1]: https://github.com/ag3ntsc4rn/anysoar/releases/tag/v0.0.1

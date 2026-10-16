@@ -1,6 +1,6 @@
 [project]
 name = "anysoar"
-version = "0.2.0"
+version = "0.2.1"
 description = "Vendor-agnostic adapter that lets AI agents operate any SOAR platform through one interface."
 readme = "README.md"
 requires-python = ">=3.12"
