@@ -63,7 +63,13 @@ def main(argv: Sequence[str] | None = None) -> None:
         f"  anysoar-mcp --approver http reads its settings from {connection}\n",
         flush=True,
     )
-    try:
-        uvicorn.run(create_app(config), host=HOST, port=args.port, log_level="warning")
-    finally:
+
+    def forget() -> None:
         connection.unlink(missing_ok=True)
+
+    # uvicorn re-raises SIGTERM after shutting down, so cleanup runs in the app's shutdown.
+    app = create_app(config, on_shutdown=forget)
+    try:
+        uvicorn.run(app, host=HOST, port=args.port, log_level="warning")
+    finally:
+        forget()

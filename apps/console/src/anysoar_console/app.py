@@ -14,10 +14,11 @@ The app listens on localhost only and rejects other Host headers (DNS rebinding)
 
 from __future__ import annotations
 
+import contextlib
 import hmac
 import json
 import secrets
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from importlib.resources import files
 
@@ -52,7 +53,10 @@ def _same(secret: str, candidate: str | None) -> bool:
     return candidate is not None and hmac.compare_digest(secret.encode(), candidate.encode())
 
 
-def create_app(config: ConsoleConfig | None = None) -> Starlette:
+def create_app(
+    config: ConsoleConfig | None = None, *, on_shutdown: Callable[[], None] | None = None
+) -> Starlette:
+    """The console app. ``on_shutdown`` runs when the server stops, signals included."""
     config = config or ConsoleConfig()
     bus = EventBus()
     store = ApprovalStore(bus)
@@ -161,7 +165,16 @@ def create_app(config: ConsoleConfig | None = None) -> Starlette:
 
         return EventSourceResponse(events(), ping=15)
 
+    @contextlib.asynccontextmanager
+    async def lifespan(_: Starlette) -> AsyncIterator[None]:
+        try:
+            yield
+        finally:
+            if on_shutdown is not None:
+                on_shutdown()
+
     app = Starlette(
+        lifespan=lifespan,
         routes=[
             Route("/api/approvals", submit, methods=["POST"]),
             Route("/api/approvals/{id}", status, methods=["GET"]),

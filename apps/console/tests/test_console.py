@@ -196,3 +196,14 @@ def test_connection_file_is_private(tmp_path: Path) -> None:
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
     assert "ANYSOAR_APPROVAL_TOKEN=submit-token" in path.read_text()
     assert os.access(path, os.R_OK)
+
+
+def test_shutdown_hook_runs_when_the_server_stops() -> None:
+    from starlette.testclient import TestClient
+
+    calls: list[str] = []
+    with TestClient(
+        create_app(on_shutdown=lambda: calls.append("stopped")), base_url="http://127.0.0.1"
+    ):
+        assert calls == []
+    assert calls == ["stopped"]
