@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import importlib.util
 import logging
 import os
 import sys
@@ -134,6 +135,8 @@ async def _serve(args: argparse.Namespace, policy: Policy, driver: Driver) -> No
 
 def main(argv: Sequence[str] | None = None) -> None:
     args = _parser().parse_args(argv)
+    if importlib.util.find_spec("mcp") is None:
+        sys.exit('anysoar-mcp needs the "mcp" extra: pip install "anysoar[mcp]"')
     # stdout carries the MCP protocol, so everything else goes to stderr.
     logging.basicConfig(level=logging.WARNING, stream=sys.stderr, format="%(name)s: %(message)s")
     logging.getLogger("anysoar").setLevel(logging.INFO)  # the SDK's request logs stay quiet

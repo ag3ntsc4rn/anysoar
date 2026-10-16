@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-16
+
 ### Added
 
 - `anysoar.models`: Pydantic v2 models aligned with OCSF 1.9.0. Alerts are Detection Findings,
@@ -69,6 +71,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A case's uid is its `metadata.uid`, since an OCSF Incident Finding has no uid of its own.
 - `anysoar-mcp` logs only warnings from the MCP SDK; its own messages stay at info.
+- Using a feature whose optional dependencies are missing raises an error that names the
+  extra to install (e.g. `pip install "anysoar[mcp]"`); `anysoar-mcp --help` works without it.
 - The `shuffle` extra now depends on `httpx2` (used by the MCP and Anthropic SDKs) instead of
   `httpx`.
 
@@ -79,5 +83,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial package skeleton exposing `anysoar.__version__`, published to reserve the name.
 - Optional extras `mcp` and `shuffle` declared for upcoming features.
 
-[Unreleased]: https://github.com/ag3ntsc4rn/anysoar/compare/v0.0.1...HEAD
+[Unreleased]: https://github.com/ag3ntsc4rn/anysoar/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/ag3ntsc4rn/anysoar/compare/v0.0.1...v0.1.0
 [0.0.1]: https://github.com/ag3ntsc4rn/anysoar/releases/tag/v0.0.1
