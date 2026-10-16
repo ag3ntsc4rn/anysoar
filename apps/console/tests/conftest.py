@@ -17,6 +17,8 @@ def console(tmp_path: Path) -> Iterator[Console]:
         operator="analyst1",
         audit_log=tmp_path / "audit.jsonl",
         kill_switch=tmp_path / "STOP",
+        soar_switch=tmp_path / "SOAR",
+        soars=("mock", "shuffle"),
     )
     server = uvicorn.Server(
         uvicorn.Config(create_app(config), host="127.0.0.1", port=0, log_level="warning")

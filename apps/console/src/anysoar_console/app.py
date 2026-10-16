@@ -35,9 +35,15 @@ from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Re
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
+from anysoar.drivers import SoarSwitch
 from anysoar.policy import KillSwitch
 from anysoar_console.store import ApprovalStore, EventBus, Feed
-from anysoar_console.watch import follow_audit_log, watch_kill_switch
+from anysoar_console.watch import (
+    follow_audit_log,
+    soar_state,
+    watch_kill_switch,
+    watch_soar_switch,
+)
 
 __all__ = ["ConsoleConfig", "create_app"]
 
@@ -58,6 +64,10 @@ class ConsoleConfig:
     """anysoar's audit log to show as it grows."""
     kill_switch: Path | None = None
     """anysoar's kill switch file, engaged and released from the console."""
+    soar_switch: Path | None = None
+    """anysoar's SOAR switch file (``anysoar-mcp --driver a,b``), switched from the console."""
+    soars: tuple[str, ...] = ()
+    """The SOARs anysoar can switch between, the first being the default."""
 
 
 def _same(secret: str, candidate: str | None) -> bool:
@@ -74,6 +84,11 @@ def create_app(
     agent_feed = Feed(bus, "agent")
     audit_feed = Feed(bus, "audit")
     switch = KillSwitch(config.kill_switch) if config.kill_switch else None
+    soar_switch = (
+        SoarSwitch(config.soar_switch, list(config.soars), default=config.soars[0])
+        if config.soar_switch is not None and len(config.soars) > 1
+        else None
+    )
     sessions: set[str] = set()
     static = files("anysoar_console") / "static"
 
@@ -174,8 +189,24 @@ def create_app(
                 "agent": agent_feed.all(),
                 "audit": audit_feed.all(),
                 "kill_switch": _switch_state(switch),
+                "soar": soar_state(soar_switch),
             }
         )
+
+    async def switch_soar(request: Request) -> Response:
+        if not person(request, writing=True):
+            return denied
+        if soar_switch is None:
+            return JSONResponse({"error": "no SOAR switch configured"}, status_code=409)
+        name = (await request.json()).get("soar")
+        if name not in soar_switch.choices:
+            return JSONResponse(
+                {"error": f"soar must be one of {soar_switch.choices}"}, status_code=400
+            )
+        soar_switch.set(name)
+        state = soar_state(soar_switch)
+        bus.publish("soar", state)
+        return JSONResponse(state)
 
     async def kill_switch(request: Request) -> Response:
         if not person(request, writing=True):
@@ -234,6 +265,8 @@ def create_app(
             tasks.append(asyncio.create_task(follow_audit_log(config.audit_log, audit_feed)))
         if switch is not None:
             tasks.append(asyncio.create_task(watch_kill_switch(switch, bus)))
+        if soar_switch is not None:
+            tasks.append(asyncio.create_task(watch_soar_switch(soar_switch, bus)))
         try:
             yield
         finally:
@@ -254,6 +287,7 @@ def create_app(
             Route("/ui/state", state),
             Route("/ui/approvals/{id}/decide", decide, methods=["POST"]),
             Route("/ui/kill-switch", kill_switch, methods=["POST"]),
+            Route("/ui/soar", switch_soar, methods=["POST"]),
             Route("/ui/stream", stream),
             Mount("/static", StaticFiles(directory=str(static)), name="static"),
         ],
