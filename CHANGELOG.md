@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cases (most recently updated first, optionally filtered by status), so agents can find
   work instead of being handed case ids. Implemented by the mock and Shuffle drivers,
   guarded by the policy layer, offered as an MCP tool, and covered by the contract suite.
+- `anysoar.drivers.SwitchableDriver` and `SoarSwitch`: switch the SOAR behind anysoar while
+  agents keep running. A small file names the active SOAR; each call goes to the driver it
+  names, and `describe()` reports that driver. `anysoar-mcp --driver mock,shuffle` serves
+  several SOARs (switch file `--soar-switch`, default `~/.local/state/anysoar/SOAR`), and the
+  MCP server adds and removes tools within a second of a switch.
 
 - `anysoar.policy.HttpApprover`: approve actions through an approval service over HTTP, such
   as a web console or a chat bot. A small documented protocol (submit, wait for a decision,
@@ -83,6 +88,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `$XDG_STATE_HOME/anysoar/` (`~/.local/state/anysoar/`).
 
 ### Changed
+
+- The policy layer checks what the driver supports with `describe()` at the time of each
+  call, not with the driver class, so it honours drivers that narrow their capabilities and
+  drivers whose SOAR changes at runtime. Unsupported calls still fail before any approval.
 
 - A case's uid is its `metadata.uid`, since an OCSF Incident Finding has no uid of its own.
 - `anysoar-mcp` logs only warnings from the MCP SDK; its own messages stay at info.

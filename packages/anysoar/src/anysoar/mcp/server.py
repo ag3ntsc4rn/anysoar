@@ -4,7 +4,9 @@ This module deliberately has no ``from __future__ import annotations``: the MCP 
 tool and resolver annotations at registration time.
 """
 
+import asyncio
 import contextlib
+import logging
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -58,6 +60,8 @@ from anysoar.policy import (
 )
 
 __all__ = ["ApprovalForm", "ElicitationApprover", "create_server"]
+
+logger = logging.getLogger(__name__)
 
 INSTRUCTIONS = """\
 anysoar connects you to a SOAR platform through a policy layer. Call describe_soar first: it \
@@ -150,22 +154,58 @@ class ElicitationApprover:
         raise ApprovalUnavailableError("approval was not requested for this action")
 
 
-async def create_server(guard: GuardedDriver, *, name: str = "anysoar") -> MCPServer:
+async def create_server(
+    guard: GuardedDriver, *, name: str = "anysoar", resync_interval: float = 1.0
+) -> MCPServer:
     """Build an MCP server exposing ``guard``'s operations as tools.
 
     Only operations the guarded driver reports in ``describe()`` become tools, plus
-    ``describe_soar``. If ``guard.approver`` is an :class:`ElicitationApprover`, the user is
-    asked in their MCP client whenever the policy requires approval; with any other approver
-    (e.g. a console), approval happens out of band and the client is never asked.
+    ``describe_soar``. While the server runs, the tools follow the driver: if what it
+    supports changes (e.g. a :class:`~anysoar.drivers.SwitchableDriver` switches SOAR), tools
+    are added and removed within ``resync_interval`` seconds.
+
+    If ``guard.approver`` is an :class:`ElicitationApprover`, the user is asked in their MCP
+    client whenever the policy requires approval; with any other approver (e.g. a console),
+    approval happens out of band and the client is never asked.
 
     The caller owns ``guard`` and must close it after the server stops.
     """
     info = await guard.describe()
     state = _State(guard=guard, elicits=isinstance(guard.approver, ElicitationApprover))
+    offered: set[Capability] = set()
+
+    def sync_tools(capabilities: frozenset[Capability]) -> None:
+        for capability in sorted(offered - capabilities):
+            server.remove_tool(capability.value)
+            offered.discard(capability)
+        for capability in sorted(capabilities - offered):
+            server.add_tool(
+                _TOOLS[capability],
+                name=capability.value,
+                title=capability.value.replace("_", " ").capitalize(),
+                annotations=_annotations(capability),
+            )
+            offered.add(capability)
+
+    async def follow_driver() -> None:
+        while True:
+            await asyncio.sleep(resync_interval)
+            try:
+                current = await guard.describe()
+            except Exception:
+                logger.exception("could not describe the driver; tools unchanged")
+                continue
+            if set(current.capabilities) != offered:
+                logger.info("SOAR is now %r; updating tools", current.name)
+                sync_tools(current.capabilities)
 
     @contextlib.asynccontextmanager
     async def lifespan(_: MCPServer[Any]) -> AsyncIterator[_State]:
-        yield state
+        follower = asyncio.create_task(follow_driver())
+        try:
+            yield state
+        finally:
+            follower.cancel()
 
     server: MCPServer[Any] = MCPServer(
         name, version=__version__, instructions=INSTRUCTIONS, lifespan=lifespan
@@ -201,14 +241,7 @@ whether policy allows them, requires approval or denies them. Also reports the k
         title="Describe SOAR",
         annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False),
     )
-    for capability in sorted(info.capabilities):
-        fn = _TOOLS[capability]
-        server.add_tool(
-            fn,
-            name=capability.value,
-            title=capability.value.replace("_", " ").capitalize(),
-            annotations=_annotations(capability),
-        )
+    sync_tools(info.capabilities)
     return server
 
 
