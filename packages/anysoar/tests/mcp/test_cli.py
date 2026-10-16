@@ -79,3 +79,10 @@ async def test_stdio_end_to_end(tmp_path: Path) -> None:
 
     kinds = [json.loads(line)["kind"] for line in audit.read_text().splitlines()]
     assert kinds == ["requested", "approval", "completed", "requested", "denied"]
+
+
+def test_shuffle_driver_needs_its_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SHUFFLE_URL", raising=False)
+    monkeypatch.delenv("SHUFFLE_API_KEY", raising=False)
+    with pytest.raises(SystemExit, match=r"cannot start the shuffle driver: .*SHUFFLE_URL"):
+        main(["--driver", "shuffle"])
