@@ -133,7 +133,7 @@ class TestGuardAfterASwitch:
         switch.set("limited")
         with pytest.raises(CapabilityNotSupportedError) as raised:
             await guard.add_note("case-0002", Note(comment="on the limited SOAR"))
-        assert raised.value.driver == "mock"  # describe() reports the mock's own name
+        assert raised.value.driver == "limited"  # named as the switch names it
         assert len(approver.asked) == 1
 
     async def test_audit_names_the_active_soar(self, tmp_path: Path) -> None:
