@@ -34,7 +34,7 @@ select = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["anysoar", "anysoar_agent"]
+known-first-party = ["anysoar", "anysoar_agent", "anysoar_console"]
 
 [tool.mypy]
 python_version = "3.12"

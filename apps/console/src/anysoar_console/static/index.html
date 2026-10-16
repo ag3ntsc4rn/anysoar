@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>anysoar console</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <div class="brand">anysoar <span>console</span></div>
+    <div class="status">
+      <span id="connection" class="dot" title="Live updates"></span>
+      <span id="connection-label">Connecting…</span>
+      <span class="sep">·</span>
+      <span>Deciding as <strong id="operator">…</strong></span>
+    </div>
+  </header>
+
+  <main>
+    <section aria-labelledby="pending-title">
+      <h2 id="pending-title">Waiting for you <span id="pending-count" class="count">0</span></h2>
+      <p class="hint">An agent wants to do these through anysoar. Nothing happens until you decide.</p>
+      <div id="pending" class="cards"></div>
+      <p id="pending-empty" class="empty">Nothing is waiting. Requests appear here as soon as an agent asks.</p>
+    </section>
+
+    <section aria-labelledby="history-title">
+      <h2 id="history-title">Decided</h2>
+      <ol id="history" class="history"></ol>
+      <p id="history-empty" class="empty">No decisions yet.</p>
+    </section>
+  </main>
+
+  <template id="card-template">
+    <article class="card">
+      <div class="meta">
+        <span class="tier"></span>
+        <span class="capability"></span>
+        <span class="actor"></span>
+        <span class="waited"></span>
+      </div>
+      <h3 class="summary"></h3>
+      <details>
+        <summary>Details</summary>
+        <pre class="arguments"></pre>
+      </details>
+      <form class="decide">
+        <input name="reason" type="text" maxlength="500" placeholder="Reason (optional, goes into the audit log)" autocomplete="off">
+        <div class="buttons">
+          <button type="submit" name="decision" value="reject" class="reject">Reject</button>
+          <button type="submit" name="decision" value="approve" class="approve">Approve</button>
+        </div>
+      </form>
+    </article>
+  </template>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
