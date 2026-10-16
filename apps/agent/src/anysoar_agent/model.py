@@ -22,6 +22,7 @@ __all__ = [
     "ToolResults",
     "ToolSpec",
     "Transcript",
+    "Usage",
     "UserMessage",
 ]
 
@@ -53,6 +54,24 @@ StopReason = Literal["end", "tool_use", "max_tokens", "refusal"]
 
 
 @dataclass(frozen=True)
+class Usage:
+    """Tokens a turn used, as the provider reports them."""
+
+    input_tokens: int = 0
+    """Input tokens, including any read from or written to a prompt cache."""
+    cached_input_tokens: int = 0
+    """The part of ``input_tokens`` read from a prompt cache."""
+    output_tokens: int = 0
+
+    def __add__(self, other: Usage) -> Usage:
+        return Usage(
+            self.input_tokens + other.input_tokens,
+            self.cached_input_tokens + other.cached_input_tokens,
+            self.output_tokens + other.output_tokens,
+        )
+
+
+@dataclass(frozen=True)
 class AssistantTurn:
     """One model reply."""
 
@@ -64,6 +83,7 @@ class AssistantTurn:
     """A summary of the model's reasoning, if the provider returns one."""
     model: str = ""
     """The model that produced this turn."""
+    usage: Usage = field(default_factory=Usage)
     raw: Any = field(default=None, compare=False, repr=False)
     """The provider's own reply, for replaying it unchanged."""
 

@@ -18,6 +18,7 @@ from anysoar_agent.model import (
     ToolResults,
     ToolSpec,
     Transcript,
+    Usage,
     UserMessage,
 )
 from anysoar_agent.scripted import ScriptedModel
@@ -163,3 +164,18 @@ async def test_declined_approval_reaches_the_model_as_an_error() -> None:
     assert closed.is_error
     assert "approval_rejected" in closed.content
     assert (await mock.get_case("case-0002")).status_id is IncidentFindingStatusId.NEW
+
+
+async def test_result_sums_usage() -> None:
+    model = ScriptedModel(
+        [
+            AssistantTurn(
+                stop="tool_use",
+                tool_calls=(ToolCall("1", "echo", {}),),
+                usage=Usage(100, 0, 10),
+            ),
+            AssistantTurn(stop="end", text="ok", usage=Usage(150, 90, 20)),
+        ]
+    )
+    result = await Agent(model, FakeToolbox(), system="").run("x")
+    assert result.usage == Usage(250, 90, 30)
