@@ -209,8 +209,8 @@ class GuardedDriver(Driver):
         alert_uid: str | None = None,
         inputs: Mapping[str, JsonValue] | None = None,
     ) -> Action:
-        self._require_supported(Capability.RUN_PLAYBOOK)
-        playbook = await self._find_playbook(playbook_uid)
+        supported = await self._require_supported(Capability.RUN_PLAYBOOK)
+        playbook = await self._find_playbook(playbook_uid, supported)
         name = f"{playbook.name!r} ({playbook_uid})" if playbook else playbook_uid
         targets = [
             f"{kind} {uid}" for kind, uid in (("case", case_uid), ("alert", alert_uid)) if uid
@@ -229,13 +229,22 @@ class GuardedDriver(Driver):
             },
         )
 
-    def _require_supported(self, capability: Capability) -> None:
-        if capability not in type(self.driver).implemented_capabilities():
-            raise CapabilityNotSupportedError(capability, driver=self.driver.name)
+    async def _require_supported(self, capability: Capability) -> frozenset[Capability]:
+        """What the driver supports right now, if it includes ``capability``.
 
-    async def _find_playbook(self, playbook_uid: str) -> Playbook | None:
+        Asks the driver rather than its class: support can depend on the SOAR's version or
+        permissions, or change at runtime (see :class:`~anysoar.drivers.SwitchableDriver`).
+        """
+        info = await self.driver.describe()
+        if capability not in info.capabilities:
+            raise CapabilityNotSupportedError(capability, driver=info.name)
+        return info.capabilities
+
+    async def _find_playbook(
+        self, playbook_uid: str, supported: frozenset[Capability]
+    ) -> Playbook | None:
         """The playbook, or ``None`` if the driver cannot list playbooks."""
-        if Capability.LIST_PLAYBOOKS not in type(self.driver).implemented_capabilities():
+        if Capability.LIST_PLAYBOOKS not in supported:
             return None
         for playbook in await self.driver.list_playbooks():
             if playbook.uid == playbook_uid:
@@ -248,7 +257,7 @@ class GuardedDriver(Driver):
         call: Callable[[], Awaitable[T]],
         result_ref: Callable[[T], str | None] | None = None,
     ) -> T:
-        self._require_supported(action.capability)
+        await self._require_supported(action.capability)
         decision = self.policy.decide(action)
         call_uid = uuid.uuid4().hex
 

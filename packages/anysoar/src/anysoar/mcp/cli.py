@@ -16,6 +16,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from anysoar import __version__
+from anysoar.drivers import SoarSwitch, SwitchableDriver
 from anysoar.drivers.mock import MockDriver
 from anysoar.interface import Driver
 from anysoar.policy import (
@@ -86,10 +87,17 @@ def _parser() -> argparse.ArgumentParser:
     env = os.environ.get
     parser.add_argument(
         "--driver",
-        choices=sorted(DRIVERS),
         default=env("ANYSOAR_DRIVER", "mock"),
-        help="SOAR driver to use (env ANYSOAR_DRIVER; default: %(default)s). "
-        "shuffle reads SHUFFLE_URL and SHUFFLE_API_KEY",
+        help=f"SOAR driver to use: {', '.join(sorted(DRIVERS))} (env ANYSOAR_DRIVER; "
+        "default: %(default)s). shuffle reads SHUFFLE_URL and SHUFFLE_API_KEY. Several, "
+        "comma-separated, serve whichever the --soar-switch file names (the first by default)",
+    )
+    parser.add_argument(
+        "--soar-switch",
+        type=Path,
+        default=env("ANYSOAR_SOAR_SWITCH") or state_dir() / "SOAR",
+        help="with several drivers, the file naming the active one "
+        "(env ANYSOAR_SOAR_SWITCH; default: %(default)s)",
     )
     parser.add_argument(
         "--policy",
@@ -131,6 +139,26 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser
+
+
+def _driver(args: argparse.Namespace) -> Driver:
+    names = [n.strip() for n in args.driver.split(",") if n.strip()]
+    unknown = [n for n in names if n not in DRIVERS]
+    if not names or unknown or len(set(names)) != len(names):
+        sys.exit(
+            f"anysoar-mcp: --driver must name distinct drivers from: {', '.join(sorted(DRIVERS))}"
+        )
+    drivers: dict[str, Driver] = {}
+    for name in names:
+        try:
+            drivers[name] = DRIVERS[name]()
+        except ValueError as exc:
+            sys.exit(f"anysoar-mcp: cannot start the {name} driver: {exc}")
+    if len(drivers) == 1:
+        return drivers[names[0]]
+    switch = SoarSwitch(args.soar_switch, names, default=names[0])
+    logger.info("serving %s; the active SOAR is named in %s", ", ".join(names), args.soar_switch)
+    return SwitchableDriver(drivers, switch)
 
 
 def _approver(args: argparse.Namespace) -> Approver:
@@ -182,9 +210,6 @@ def main(argv: Sequence[str] | None = None) -> None:
         detail = str(exc) if not isinstance(exc, ValidationError) else f"\n{exc}"
         sys.exit(f"anysoar-mcp: invalid policy {args.policy}: {detail}")
     approver = _approver(args)
-    try:
-        driver = DRIVERS[args.driver]()
-    except ValueError as exc:
-        sys.exit(f"anysoar-mcp: cannot start the {args.driver} driver: {exc}")
+    driver = _driver(args)
     with contextlib.suppress(KeyboardInterrupt):
         asyncio.run(_serve(args, policy, driver, approver))
