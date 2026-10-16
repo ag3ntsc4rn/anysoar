@@ -38,8 +38,16 @@ def soar(thehive: FakeTheHive) -> TheHiveDriver:
 
 class TestTheHiveContract(DriverContract):
     @pytest.fixture
-    def driver(self) -> TheHiveDriver:
-        return TheHiveDriver(BASE_URL, API_KEY, transport=FakeTheHive().transport())
+    def fake(self) -> FakeTheHive:
+        return FakeTheHive()
+
+    @pytest.fixture
+    def driver(self, fake: FakeTheHive) -> TheHiveDriver:
+        return TheHiveDriver(BASE_URL, API_KEY, transport=fake.transport())
+
+    @pytest.fixture
+    def case_uid(self, fake: FakeTheHive) -> str:
+        return fake.open_case
 
 
 class TestConfiguration:
@@ -47,7 +55,14 @@ class TestConfiguration:
         info = await soar.describe()
         assert info.name == "thehive"
         assert (info.soar_product, info.soar_version) == ("TheHive", "5.8.1-1")
-        assert info.capabilities == {Capability.LIST_ALERTS, Capability.GET_ALERT}
+        assert info.capabilities == {
+            Capability.LIST_ALERTS,
+            Capability.GET_ALERT,
+            Capability.LIST_CASES,
+            Capability.GET_CASE,
+            Capability.ADD_NOTE,
+            Capability.CLOSE_CASE,
+        }
 
     def test_reads_environment(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("THEHIVE_URL", BASE_URL)
@@ -175,6 +190,7 @@ class TestListingAlerts:
             thehive.triaging,
             thehive.dismissed,
             thehive.false_alarm,
+            thehive.imported,
         ]
         assert all(a.observables == [] for a in page.items)  # get_alert fetches them
         assert page.next_cursor is None
@@ -183,8 +199,8 @@ class TestListingAlerts:
         first = await soar.list_alerts(AlertQuery(limit=2))
         assert [a.finding_info.uid for a in first.items] == [thehive.phishing, thehive.scan]
         assert first.next_cursor == "2"
-        last = await soar.list_alerts(AlertQuery(limit=3, cursor=first.next_cursor))
-        assert len(last.items) == 3
+        last = await soar.list_alerts(AlertQuery(limit=4, cursor=first.next_cursor))
+        assert len(last.items) == 4
         assert last.next_cursor is None
 
     async def test_invalid_cursor(self, soar: TheHiveDriver) -> None:
@@ -199,6 +215,7 @@ class TestListingAlerts:
             ({Status.SUPPRESSED}, ["dismissed"]),
             ({Status.RESOLVED}, ["false_alarm"]),
             ({Status.NEW, Status.SUPPRESSED}, ["phishing", "scan", "dismissed"]),
+            ({Status.OTHER}, ["imported"]),
             ({Status.ARCHIVED}, []),
         ],
     )
@@ -256,30 +273,52 @@ live = pytest.mark.skipif(
 
 @live
 class TestLiveTheHiveContract(DriverContract):
-    """The contract suite against a real TheHive. Creates synthetic alerts and deletes them."""
+    """The contract suite against a real TheHive. Creates synthetic alerts and cases, and
+    deletes them afterwards."""
 
     @pytest_asyncio.fixture
-    async def driver(self) -> AsyncIterator[TheHiveDriver]:
-        # Alerts are created and deleted over a connection of their own: tests close the
-        # driver they are given.
+    async def lab(self) -> AsyncIterator[dict[str, list[str]]]:
+        """Two alerts and two cases, made over a connection of their own: tests close the
+        driver they are given. Yields their alert ids and case numbers."""
         async with TheHiveDriver() as setup:
-            created = []
-            for n, severity in enumerate((2, 3)):
-                alert = await setup._client.request(
-                    "POST",
-                    "/api/v1/alert",
-                    json={
-                        "type": "anysoar-contract",
-                        "source": "anysoar",
-                        "sourceRef": f"contract-{uuid.uuid4().hex}",
-                        "title": f"anysoar contract test alert {n}",
-                        "description": "Synthetic alert created by anysoar's contract tests.",
-                        "severity": severity,
-                        "observables": [{"dataType": "ip", "data": f"192.0.2.{n + 1}"}],
-                    },
-                )
-                created.append(alert["_id"])
-            async with TheHiveDriver() as driver:
-                yield driver
-            for alert_id in created:
-                await setup._client.request("DELETE", f"/api/v1/alert/{alert_id}")
+            created: dict[str, list[str]] = {"alert": [], "case": []}
+            try:
+                for n, severity in enumerate((2, 3)):
+                    alert = await setup._client.request(
+                        "POST",
+                        "/api/v1/alert",
+                        json={
+                            "type": "anysoar-contract",
+                            "source": "anysoar",
+                            "sourceRef": f"contract-{uuid.uuid4().hex}",
+                            "title": f"anysoar contract test alert {n}",
+                            "description": "Synthetic alert created by anysoar's contract tests.",
+                            "severity": severity,
+                            "observables": [{"dataType": "ip", "data": f"192.0.2.{n + 1}"}],
+                        },
+                    )
+                    created["alert"].append(alert["_id"])
+                    case = await setup._client.request(
+                        "POST",
+                        "/api/v1/case",
+                        json={
+                            "title": f"anysoar contract test case {n}",
+                            "description": "Synthetic case created by anysoar's contract tests.",
+                            "severity": severity,
+                        },
+                    )
+                    created["case"].append(str(case["number"]))
+                yield created
+            finally:
+                for kind, uids in created.items():
+                    for uid in uids:
+                        await setup._client.request("DELETE", f"/api/v1/{kind}/{uid}")
+
+    @pytest_asyncio.fixture
+    async def driver(self, lab: dict[str, list[str]]) -> AsyncIterator[TheHiveDriver]:
+        async with TheHiveDriver() as driver:
+            yield driver
+
+    @pytest.fixture
+    def case_uid(self, lab: dict[str, list[str]]) -> str:
+        return lab["case"][0]

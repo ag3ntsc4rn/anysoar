@@ -36,12 +36,33 @@ _STAGES = {
 }
 """TheHive 5.8's built-in alert statuses and their stages."""
 
+_CASE_STAGES = {
+    "New": "New",
+    "InProgress": "InProgress",
+    "TruePositive": "Closed",
+    "FalsePositive": "Closed",
+    "Indeterminate": "Closed",
+    "Duplicated": "Closed",
+    "Other": "Closed",
+}
+"""TheHive 5.8's built-in case statuses and their stages."""
+
+_UPDATABLE = {"status", "tags", "summary"}
+"""Case fields the fake lets a PATCH change."""
+
 
 @dataclass
 class FakeTheHive:
     alerts: dict[str, dict[str, Any]] = field(default_factory=dict)
+    cases: dict[str, dict[str, Any]] = field(default_factory=dict)
+    """Cases by number."""
     observables: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    """Observables by the id of their alert or case."""
+    comments: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    """Comments by case number."""
     requests: list[httpx2.Request] = field(default_factory=list)
+    now: int = T0 + 60 * MINUTE
+    """The fake's clock: changes happen at this time, and it moves on a minute each time."""
     _ids: itertools.count[int] = field(default_factory=lambda: itertools.count(8200, 8))
 
     def __post_init__(self) -> None:
@@ -64,6 +85,26 @@ class FakeTheHive:
         self.false_alarm = self.alert(
             "Malware download", minutes=0, severity=4, status="FalsePositive"
         )
+        self.imported = self.alert(
+            "Credential phishing: payroll@example.net",
+            minutes=-10,
+            status="Imported",
+            observables=(("mail", "payroll@example.net"),),
+        )
+
+        # Cases, most recently updated first: 1, 3, 2, 5, 4. Cases 2 and 5 were never updated.
+        self.investigating = self.case(
+            "Credential phishing: payroll@example.net",
+            created=0,
+            updated=50,
+            status="InProgress",
+            alerts=[self.imported],
+        )
+        self.open_case = self.case("Suspicious login", created=40)
+        self.case("Malware download", created=5, updated=45, status="FalsePositive")
+        self.case("Port scan again", created=2, updated=3, status="Duplicated")
+        self.case("Phishing report", created=20, severity=1)
+        self.comment(self.investigating, "Started on this.", created=55)
 
     def next_id(self) -> str:
         return f"~{next(self._ids)}"
@@ -129,6 +170,72 @@ class FakeTheHive:
         ]
         return alert_id
 
+    def case(
+        self,
+        title: str,
+        *,
+        created: int,
+        updated: int | None = None,
+        status: str = "New",
+        severity: int = 2,
+        alerts: list[str] | None = None,
+    ) -> str:
+        """Add a case, created and last updated these many minutes after T0, as TheHive
+        returns it. The ``alerts`` become part of it, with their observables. Returns its
+        number."""
+        number = str(len(self.cases) + 1)
+        case_id = self.next_id()
+        self.cases[number] = {
+            "_id": case_id,
+            "_type": "Case",
+            "_createdBy": "anysoar@anysoar.lab",
+            "_createdAt": T0 + created * MINUTE,
+            "_updatedAt": T0 + updated * MINUTE if updated is not None else None,
+            "number": int(number),
+            "title": title,
+            "description": f"Synthetic case: {title}.",
+            "severity": severity,
+            "severityLabel": {1: "LOW", 2: "MEDIUM", 3: "HIGH", 4: "CRITICAL"}[severity],
+            "startDate": T0 + created * MINUTE,
+            "endDate": None,
+            "tags": ["phishing"],
+            "flag": False,
+            "tlp": 2,
+            "pap": 2,
+            "status": status,
+            "stage": _CASE_STAGES[status],
+            "assignee": "anysoar@anysoar.lab",
+            "summary": None,
+            "impactStatus": None,
+            "customFields": [],
+            "extraData": {},
+        }
+        if _CASE_STAGES[status] == "Closed":
+            self.cases[number]["endDate"] = self.cases[number]["_updatedAt"]
+        self.observables[case_id] = []
+        for alert_id in alerts or []:
+            self.alerts[alert_id]["caseId"] = case_id
+            self.observables[case_id] += [dict(o) for o in self.observables[alert_id]]
+        self.comments[number] = []
+        return number
+
+    def comment(self, number: str, message: str, *, created: int | None = None) -> dict[str, Any]:
+        comment = {
+            "_id": self.next_id(),
+            "_type": "Comment",
+            "createdBy": "anysoar@anysoar.lab",
+            "createdAt": T0 + created * MINUTE if created is not None else self.tick(),
+            "message": message,
+            "isEdited": False,
+            "extraData": {},
+        }
+        self.comments[number].append(comment)
+        return comment
+
+    def tick(self) -> int:
+        self.now += MINUTE
+        return self.now
+
     def transport(self) -> httpx2.MockTransport:
         return httpx2.MockTransport(self.handle)
 
@@ -142,17 +249,60 @@ class FakeTheHive:
         if method == "GET" and (match := re.fullmatch(r"/api/v1/alert/(.+)", path)):
             alert = self.alerts.get(match[1])
             return _json(200, alert) if alert else _not_found("Alert")
+        if match := re.fullmatch(r"/api/v1/case/(\d+)(/comment)?", path):
+            number, comment = match[1], match[2]
+            body: dict[str, Any] = json.loads(request.content) if request.content else {}
+            if number not in self.cases:
+                return _not_found("Case")
+            if method == "GET" and not comment:
+                return _json(200, self.cases[number])
+            if method == "POST" and comment:
+                return _json(201, self.comment(number, body["message"]))
+            if method == "PATCH" and not comment:
+                self._update_case(number, body)
+                return httpx2.Response(204)
         if method == "POST" and path == "/api/v1/query":
             return _json(200, self._query(json.loads(request.content)["query"]))
         return _json(404, {"type": "NotFoundError", "message": f"{method} {path}"})
+
+    def _update_case(self, number: str, body: dict[str, Any]) -> None:
+        unknown = set(body) - _UPDATABLE
+        assert not unknown, f"the fake does not update {unknown}"
+        case = self.cases[number]
+        case.update(body)
+        case["_updatedAt"] = self.tick()
+        if "status" in body:
+            case["stage"] = _CASE_STAGES[body["status"]]
+            case["endDate"] = case["_updatedAt"] if case["stage"] == "Closed" else None
+
+    def _by_id_or_number(self, id_or_number: str) -> dict[str, Any] | None:
+        if id_or_number in self.cases:
+            return self.cases[id_or_number]
+        return next((c for c in self.cases.values() if c["_id"] == id_or_number), None)
 
     def _query(self, operations: list[dict[str, Any]]) -> list[dict[str, Any]]:
         first, *rest = operations
         if first["_name"] == "listAlert":
             items = list(self.alerts.values())
+        elif first["_name"] == "listCase":
+            items = list(self.cases.values())
         elif first["_name"] == "getAlert" and rest and rest[0]["_name"] == "observables":
             items = list(self.observables.get(first["idOrName"], []))
             rest = rest[1:]
+        elif first["_name"] == "getCase" and rest:
+            # Like TheHive, an unknown case has no related records rather than an error.
+            case = self._by_id_or_number(first["idOrName"])
+            kind, rest = rest[0]["_name"], rest[1:]
+            if case is None:
+                items = []
+            elif kind == "comments":
+                items = list(self.comments[str(case["number"])])
+            elif kind == "alerts":
+                items = [a for a in self.alerts.values() if a.get("caseId") == case["_id"]]
+            elif kind == "observables":
+                items = list(self.observables[case["_id"]])
+            else:
+                raise AssertionError(f"the fake does not support getCase {kind}")
         else:
             raise AssertionError(f"the fake does not support the query {operations}")
         for op in rest:
@@ -174,7 +324,7 @@ def _sort_key(item: dict[str, Any], name: str) -> Any:
     value = item.get(name)
     if name == "_id":
         return int(str(value)[1:])  # TheHive orders ids numerically
-    return value
+    return value if value is not None else 0  # like TheHive, unset values sort last
 
 
 def _matches(item: dict[str, Any], condition: dict[str, Any]) -> bool:
@@ -185,6 +335,8 @@ def _matches(item: dict[str, Any], condition: dict[str, Any]) -> bool:
         return any(_matches(item, c) for c in arg)
     if op == "_not":
         return not _matches(item, arg)
+    if op == "_has":
+        return item.get(arg) is not None
     value = item.get(arg["_field"])
     if op == "_eq":
         return bool(value == arg["_value"])

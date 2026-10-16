@@ -34,6 +34,7 @@ from anysoar.models import (
 
 __all__ = [
     "PRODUCT",
+    "SEVERITIES",
     "alert_status_filter",
     "min_severity",
     "to_alert",
@@ -43,7 +44,7 @@ __all__ = [
 
 PRODUCT = Product(name="TheHive", vendor_name="StrangeBee")
 
-_SEVERITIES = {
+SEVERITIES = {
     1: SeverityId.LOW,
     2: SeverityId.MEDIUM,
     3: SeverityId.HIGH,
@@ -112,10 +113,10 @@ def alert_status_filter(status_ids: frozenset[DetectionFindingStatusId]) -> dict
 
 def min_severity(severity_id: SeverityId) -> int:
     """The lowest TheHive severity at or above the OCSF ``severity_id``."""
-    for severity, ocsf in sorted(_SEVERITIES.items()):
+    for severity, ocsf in sorted(SEVERITIES.items()):
         if ocsf >= severity_id:
             return severity
-    return max(_SEVERITIES) + 1  # above critical: matches nothing
+    return max(SEVERITIES) + 1  # above critical: matches nothing
 
 
 def to_user(login: Any) -> User | None:
@@ -148,7 +149,7 @@ def to_alert(
     tags = [str(t) for t in alert.get("tags") or []]
     finding = DetectionFinding(
         activity_id=ActivityId.CLOSE if closed else ActivityId.UPDATE,
-        severity_id=_SEVERITIES.get(alert.get("severity"), SeverityId.UNKNOWN),  # type: ignore[arg-type]
+        severity_id=SEVERITIES.get(alert.get("severity"), SeverityId.UNKNOWN),  # type: ignore[arg-type]
         status_id=status_id,
         status=alert.get("status"),
         time=updated or created or 0,

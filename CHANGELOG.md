@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     anysoar. OCSF statuses come from TheHive's alert stages; Ignored alerts are Suppressed,
     and the FalsePositive and Duplicate statuses set the verdict. Filters, sorting and
     paging run in TheHive. `get_alert` includes the alert's observables as indicators.
+  - Cases are TheHive cases (`list_cases`, `get_case`, `add_note`, `close_case`); a case's
+    uid is its number. Closing sets one of TheHive's closing statuses, which is also its
+    verdict (TruePositive, FalsePositive, Indeterminate, Duplicated, Other); verdicts none of
+    them names are closed as Other with a `verdict:<name>` tag. The closing comment is the
+    case summary. `get_case` includes comments as notes, observables as indicators, and the
+    alerts the case was made from as its findings.
   - The contract suite runs against a real TheHive with `ANYSOAR_LIVE_THEHIVE=1`, such as
     the local lab in `demo/thehive`.
 
