@@ -7,8 +7,8 @@
 
 > **Status: pre-alpha.** The OCSF-aligned data model, the driver interface, the policy
 > layer, the MCP server, a reference triage agent, a web console for supervising agents, and
-> two drivers exist: a mock (an in-memory fake SOAR) and [Shuffle](https://shuffler.io), the
-> first real SOAR. Expect breaking changes.
+> three drivers exist: a mock (an in-memory fake SOAR), [Shuffle](https://shuffler.io) and
+> [Tines](https://www.tines.com). Expect breaking changes.
 
 ## See it
 
@@ -52,9 +52,11 @@ flowchart LR
     P --> I["Driver interface<br/>OCSF-aligned models"]
     I --> D1["Shuffle driver"]
     I --> D2["Mock driver"]
+    I --> D4["Tines driver"]
     I --> D3["Your driver"]
     D1 --> S1[("Shuffle")]
     D2 --> S2[("In-memory fake SOAR")]
+    D4 --> S4[("Tines")]
     D3 --> S3[("Any SOAR")]
 ```
 
@@ -71,6 +73,7 @@ Optional extras add the rest:
 pip install "anysoar[mcp]"      # MCP server (anysoar-mcp)
 pip install "anysoar[testing]"  # driver contract test suite
 pip install "anysoar[shuffle]"  # Shuffle driver
+pip install "anysoar[tines]"    # Tines driver
 ```
 
 ## Use it from an MCP client
@@ -93,7 +96,7 @@ From a checkout, use `"command": "uv"` with
 `"args": ["run", "--directory", "/path/to/anysoar", "anysoar-mcp"]` instead.
 
 The agent gets one tool per SOAR operation plus `describe_soar`. Run `anysoar-mcp --help`
-for options: `--driver` (`mock` or `shuffle`), `--policy`, `--audit-log` and `--kill-switch`.
+for options: `--driver` (`mock`, `shuffle` or `tines`), `--policy`, `--audit-log` and `--kill-switch`.
 
 ## Guardrails
 
@@ -167,6 +170,24 @@ uv run anysoar-agent triage <case id> --server-arg=--driver=shuffle
 Shuffle offers fewer operations than the mock (no alerts, no indicator enrichment), so the
 agent is offered fewer tools and adapts: without reputation data it reports a verdict as
 unconfirmed instead of guessing. Its notes and case closures show up in Shuffle's own UI.
+
+[Tines](https://www.tines.com) works the same way. Create an API key (Settings, API keys)
+and point anysoar at your tenant:
+
+```bash
+export TINES_URL=https://<your-tenant>.tines.com
+export TINES_API_KEY=<your API key>
+export TINES_TEAM_ID=<team id>   # optional: only this team's cases and stories
+uv run anysoar-agent triage <case id> --server-arg=--driver=tines
+```
+
+Cases are Tines cases. Playbooks are the stories you enable for Send to Story: anysoar
+posts to the story's entry webhook and reads its result from the exit action. A run's
+inputs arrive in the webhook body, with the case under `anysoar.case_uid`. Tag a story
+`anysoar:destructive` to have the policy layer block it. Tines has no verdict field, so a
+case closed through anysoar gets a `verdict:<name>` tag and a comment giving the verdict.
+Tines Cases is a paid feature: on a free Community Edition tenant anysoar offers the
+playbooks only.
 
 ## Use it from Python
 

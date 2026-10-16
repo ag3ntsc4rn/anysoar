@@ -18,6 +18,7 @@ destructive actions are blocked, everything is audited, and a kill switch stops 
 pip install anysoar                       # models, driver interface, policy layer, mock SOAR
 pip install "anysoar[mcp]"                # + the MCP server (anysoar-mcp)
 pip install "anysoar[shuffle]"            # + the Shuffle driver
+pip install "anysoar[tines]"              # + the Tines driver
 pip install "anysoar[testing]"            # + the contract test suite for driver authors
 ```
 
@@ -25,8 +26,8 @@ Python 3.12 or newer.
 
 ## What's in it
 
-- **Drivers:** a mock SOAR with a synthetic phishing scenario, and
-  [Shuffle](https://shuffler.io). `SwitchableDriver` switches between SOARs while agents keep
+- **Drivers:** a mock SOAR with a synthetic phishing scenario,
+  [Shuffle](https://shuffler.io) and [Tines](https://www.tines.com). `SwitchableDriver` switches between SOARs while agents keep
   running.
 - **OCSF data model:** alerts are Detection Findings, cases are Incident Findings, indicators
   are observables ([OCSF](https://schema.ocsf.io) 1.9.0), whatever the SOAR.
@@ -65,8 +66,9 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-Use `ShuffleDriver(url, api_key)` from `anysoar.drivers.shuffle` for Shuffle; the rest of
-the code stays the same.
+Use `ShuffleDriver(url, api_key)` from `anysoar.drivers.shuffle` for Shuffle, or
+`TinesDriver(url, api_key)` from `anysoar.drivers.tines` for Tines; the rest of the code
+stays the same.
 
 ## Use it from an MCP client
 
@@ -83,7 +85,7 @@ the code stays the same.
 
 The agent gets one tool per operation the SOAR supports, plus `describe_soar`. Write actions
 ask you in your MCP client, or in a web console with `anysoar-mcp --approver http`. Run
-`anysoar-mcp --help` for the options, including `--driver mock,shuffle` and `--policy`.
+`anysoar-mcp --help` for the options, including `--driver mock,shuffle,tines` and `--policy`.
 
 ## Learn more
 

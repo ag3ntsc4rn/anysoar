@@ -86,3 +86,10 @@ def test_shuffle_driver_needs_its_settings(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.delenv("SHUFFLE_API_KEY", raising=False)
     with pytest.raises(SystemExit, match=r"cannot start the shuffle driver: .*SHUFFLE_URL"):
         main(["--driver", "shuffle"])
+
+
+def test_tines_driver_needs_its_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("TINES_URL", raising=False)
+    monkeypatch.delenv("TINES_API_KEY", raising=False)
+    with pytest.raises(SystemExit, match=r"cannot start the tines driver: .*TINES_URL"):
+        main(["--driver", "tines"])
