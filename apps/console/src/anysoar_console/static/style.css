@@ -273,3 +273,15 @@ code { font-family: ui-monospace, "SF Mono", monospace; font-size: 0.9em; }
 }
 .soar button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
 td.soar-cell { white-space: nowrap; font-weight: 600; }
+
+/* What the agent is doing now, above its feed. */
+.agent-state {
+  margin: 0.25rem 0 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  font-weight: 600;
+}
+.agent-state[data-phase="waiting"] { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
+.agent-state[data-phase="finished"] { background: var(--ok-bg); color: var(--ok); border-color: transparent; }

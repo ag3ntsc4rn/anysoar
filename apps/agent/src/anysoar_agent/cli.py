@@ -229,7 +229,9 @@ async def _triage(args: argparse.Namespace, model: Model) -> AgentResult:
     session = _session(args)
     try:
         if session.reporter is not None:
-            await session.reporter.report("start", text=f"{model.name} triaging {args.case_uid}")
+            await session.reporter.report(
+                "start", text=f"{model.name} triaging {args.case_uid}", case=args.case_uid
+            )
         return await run_triage(
             args.case_uid,
             model,
@@ -256,7 +258,9 @@ async def _watch(args: argparse.Namespace) -> list[Handled]:
         print(f"\n=== {soar}: {case_uid} {title}", file=sys.stderr)
         if session.reporter is not None:
             name = shared.name if shared is not None else "demo"
-            await session.reporter.report("start", text=f"{name} triaging {case_uid} on {soar}")
+            await session.reporter.report(
+                "start", text=f"{name} triaging {case_uid} on {soar}", case=case_uid, soar=soar
+            )
 
     async def on_done(done: Handled) -> None:
         if done.switched_to is None:
