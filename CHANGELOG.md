@@ -57,6 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Security UI shows) as cases: `get_case`, `add_note` and `close_case`. Shuffle's status
   numbering, activity-log comments and text verdicts are translated to and from OCSF; notes
   are written as UI comments marked AI-handled.
+- `anysoar-mcp --driver shuffle` serves a Shuffle instance, configured by `SHUFFLE_URL` and
+  `SHUFFLE_API_KEY`.
 - `anysoar-mcp` command (also `python -m anysoar.mcp`): runs the MCP server over stdio with
   `--driver` (currently `mock`), `--policy` (TOML; unlisted tiers keep their defaults),
   `--audit-log` and `--kill-switch`, each also settable with an `ANYSOAR_*` environment
