@@ -158,7 +158,9 @@ error responses to anysoar's errors, translation of a vendor's near-OCSF records
 contract suite run against an in-process fake built from captured responses, and the same
 suite run against a live instance behind an opt-in environment variable
 (`ANYSOAR_LIVE_SHUFFLE=1`). `anysoar.drivers.tines` follows the same pattern for a SaaS
-SOAR (`ANYSOAR_LIVE_TINES=1`).
+SOAR (`ANYSOAR_LIVE_TINES=1`). `anysoar.drivers.thehive` covers alerts and enrichment too,
+and its live suite (`ANYSOAR_LIVE_THEHIVE=1`) creates the alerts and cases it tests with
+and deletes them afterwards.
 
 ### Packaging
 

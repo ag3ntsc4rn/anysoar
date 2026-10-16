@@ -19,6 +19,7 @@ pip install anysoar                       # models, driver interface, policy lay
 pip install "anysoar[mcp]"                # + the MCP server (anysoar-mcp)
 pip install "anysoar[shuffle]"            # + the Shuffle driver
 pip install "anysoar[tines]"              # + the Tines driver
+pip install "anysoar[thehive]"            # + the TheHive driver
 pip install "anysoar[testing]"            # + the contract test suite for driver authors
 ```
 
@@ -27,8 +28,9 @@ Python 3.12 or newer.
 ## What's in it
 
 - **Drivers:** a mock SOAR with a synthetic phishing scenario,
-  [Shuffle](https://shuffler.io) and [Tines](https://www.tines.com). `SwitchableDriver` switches between SOARs while agents keep
-  running.
+  [Shuffle](https://shuffler.io), [Tines](https://www.tines.com) and
+  [TheHive](https://strangebee.com/thehive/) (alerts, cases, and enrichment by Cortex
+  analyzers). `SwitchableDriver` switches between SOARs while agents keep running.
 - **OCSF data model:** alerts are Detection Findings, cases are Incident Findings, indicators
   are observables ([OCSF](https://schema.ocsf.io) 1.9.0), whatever the SOAR.
 - **Policy layer:** `GuardedDriver` wraps any driver with approvals (from the MCP client or
@@ -66,9 +68,10 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-Use `ShuffleDriver(url, api_key)` from `anysoar.drivers.shuffle` for Shuffle, or
-`TinesDriver(url, api_key)` from `anysoar.drivers.tines` for Tines; the rest of the code
-stays the same.
+Use `ShuffleDriver(url, api_key)` from `anysoar.drivers.shuffle` for Shuffle,
+`TinesDriver(url, api_key)` from `anysoar.drivers.tines` for Tines, or
+`TheHiveDriver(url, api_key)` from `anysoar.drivers.thehive` for TheHive; the rest of the
+code stays the same.
 
 ## Use it from an MCP client
 
@@ -85,7 +88,7 @@ stays the same.
 
 The agent gets one tool per operation the SOAR supports, plus `describe_soar`. Write actions
 ask you in your MCP client, or in a web console with `anysoar-mcp --approver http`. Run
-`anysoar-mcp --help` for the options, including `--driver mock,shuffle,tines` and `--policy`.
+`anysoar-mcp --help` for the options, including `--driver mock,shuffle,thehive,tines` and `--policy`.
 
 ## Learn more
 

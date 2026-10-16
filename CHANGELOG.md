@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The contract suite runs against a real TheHive with `ANYSOAR_LIVE_THEHIVE=1`, such as
     the local lab in `demo/thehive`, where it creates and deletes synthetic alerts and
     cases and runs the lab's analyzers.
+- `anysoar-mcp --driver thehive` serves a TheHive instance.
 
 ## [0.3.0] - 2026-10-16
 
