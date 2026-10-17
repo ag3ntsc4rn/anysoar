@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Drivers in other packages: a package that declares an entry point in the
+  `anysoar.drivers` group (e.g. `acme = "anysoar_acme:AcmeDriver"`) is found by
+  `anysoar-mcp --driver acme` once installed, so drivers can be published and maintained
+  outside this repository. `anysoar.drivers.available_drivers()` lists every driver by
+  name, built in or installed, and `create_driver(name)` starts one. A package cannot
+  replace a built-in driver.
+
+### Changed
+
+- `anysoar.mcp.cli.DRIVERS` is gone; use `anysoar.drivers.available_drivers()` or
+  `create_driver()`.
+
 ## [0.5.0] - 2026-10-16
 
 ### Added

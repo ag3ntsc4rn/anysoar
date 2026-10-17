@@ -30,7 +30,8 @@ Python 3.12 or newer.
 - **Drivers:** a mock SOAR with a synthetic phishing scenario,
   [Shuffle](https://shuffler.io), [Tines](https://www.tines.com) and
   [TheHive](https://strangebee.com/thehive/) (alerts, cases, and enrichment by Cortex
-  analyzers). `SwitchableDriver` switches between SOARs while agents keep running.
+  analyzers). `SwitchableDriver` switches between SOARs while agents keep running. Other
+  packages can add drivers through the `anysoar.drivers` entry point group.
 - **OCSF data model:** alerts are Detection Findings, cases are Incident Findings, indicators
   are observables ([OCSF](https://schema.ocsf.io) 1.9.0), whatever the SOAR.
 - **Policy layer:** `GuardedDriver` wraps any driver with approvals (from the MCP client or
