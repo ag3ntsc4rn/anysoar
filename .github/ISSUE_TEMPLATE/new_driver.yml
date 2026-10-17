@@ -1,5 +1,5 @@
 name: New driver request
-description: Ask for (or offer to build) a driver for another SOAR platform.
+description: Ask for, or offer to build or maintain, a driver for another SOAR platform. Vendors welcome.
 title: "driver: "
 labels: ["driver"]
 body:
@@ -33,9 +33,29 @@ body:
     attributes:
       label: Operations you need
       description: e.g. list alerts, read cases, add notes, run playbooks, close cases.
+  - type: dropdown
+    id: requester
+    attributes:
+      label: Who are you?
+      options:
+        - A user of this platform
+        - I work for the vendor of this platform
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: home
+    attributes:
+      label: Where should the driver live?
+      description: See docs/for-vendors.md. Built-in drivers are maintained in this repository; package drivers are maintained by whoever publishes them.
+      options:
+        - Built in (this repository)
+        - Its own package (e.g. anysoar-<vendor>), maintained by us
+        - No preference
   - type: checkboxes
     id: contribute
     attributes:
       label: Contributing
       options:
         - label: I'm willing to help build or test this driver.
+        - label: I can provide a test instance (sandbox, developer tenant or licence) for the contract tests.

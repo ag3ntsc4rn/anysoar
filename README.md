@@ -293,8 +293,9 @@ docs/               documentation
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Please report security issues privately as described in
-[SECURITY.md](SECURITY.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md). SOAR vendors: [docs/for-vendors.md](docs/for-vendors.md)
+explains how to get a driver for your platform, built in or in your own package. Please
+report security issues privately as described in [SECURITY.md](SECURITY.md).
 
 ## License
 

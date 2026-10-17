@@ -13,3 +13,4 @@
 - [ ] `uv run ruff check`, `uv run ruff format --check` and `uv run mypy` pass
 - [ ] `CHANGELOG.md` updated under "Unreleased" for user-visible changes
 - [ ] Only public documentation and synthetic data used; no secrets or real security data
+- [ ] Every commit is signed off (`git commit -s`), certifying the [DCO](https://developercertificate.org); see CONTRIBUTING.md
