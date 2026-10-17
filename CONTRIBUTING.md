@@ -1,7 +1,9 @@
 # Contributing to anysoar
 
-Thanks for your interest! anysoar is pre-alpha, so interfaces will change. Opening an issue
-before starting larger work is the best way to avoid wasted effort.
+Thanks for your interest! anysoar is pre-alpha, so interfaces can still change, but the
+driver API changes only as described in
+[Stability of the driver API](#stability-of-the-driver-api). Opening an issue before starting larger work is the best way to avoid wasted effort. If you
+work for a SOAR vendor, [docs/for-vendors.md](docs/for-vendors.md) is a short overview.
 
 By participating you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
@@ -39,6 +41,22 @@ CI runs the same checks on every pull request.
 - Keep pull requests small and focused. They are squash-merged, so the PR title becomes the
   commit message on `main` and should also follow Conventional Commits.
 - Add an entry under `Unreleased` in [CHANGELOG.md](CHANGELOG.md) for user-visible changes.
+
+## Signing off your commits
+
+anysoar uses the [Developer Certificate of Origin](https://developercertificate.org) (DCO)
+instead of a contributor licence agreement. By adding a `Signed-off-by` line to a commit you
+certify that you wrote it, or otherwise have the right to submit it, under the project's
+licence (Apache 2.0). `git commit -s` adds the line from your git name and email:
+
+```
+Signed-off-by: Your Name <you@example.com>
+```
+
+Every commit in a pull request needs one; a check on pull requests says which are missing.
+To add it to commits you already made, run `git rebase --signoff main` and force-push the
+branch. Contributions made on behalf of a company should be signed off by someone allowed to
+make them; the DCO does not need a separate company agreement.
 
 ## Data and test fixtures
 
@@ -162,6 +180,32 @@ SOAR (`ANYSOAR_LIVE_TINES=1`). `anysoar.drivers.thehive` covers alerts and enric
 and its live suite (`ANYSOAR_LIVE_THEHIVE=1`) creates the alerts and cases it tests with
 and deletes them afterwards.
 
+### Stability of the driver API
+
+The driver API is what a driver is written and tested against:
+
+- `anysoar.interface`: `Driver`, `Capability`, `ActionTier` and the query, page and playbook
+  types;
+- `anysoar.models` and `anysoar.errors`;
+- `anysoar.testing.DriverContract`;
+- the `anysoar.drivers` entry point group, `available_drivers()`, `create_driver()` and
+  `Retry`.
+
+Until 1.0, anysoar follows these rules for it:
+
+- **Breaking changes only in minor releases** (0.6 to 0.7), never in patch releases
+  (0.6.0 to 0.6.1). Each is listed in the changelog under "Changed" or "Removed" with what
+  to do instead.
+- **Deprecation first where practical:** the old way keeps working, with a
+  `DeprecationWarning`, for at least one minor release.
+- **Additions are not breaking.** A new capability is a new `Driver` method that raises
+  `CapabilityNotSupportedError` by default, so existing drivers keep working and the
+  contract suite skips it for them. New optional fields work the same way.
+
+So a driver in its own package should depend on the minor release it is tested against
+(e.g. `anysoar>=0.6,<0.7`) and raise the bound after checking each new minor release; the
+changelog says what changed. From 1.0 on, breaking changes need a major release.
+
 ### Packaging
 
 A driver can live here or in its own package.
@@ -177,7 +221,7 @@ them working.
 ```toml
 [project]
 name = "anysoar-acme"
-dependencies = ["anysoar>=0.6"]
+dependencies = ["anysoar>=0.6,<0.7"]  # the minor release you test against; see below
 
 [project.entry-points."anysoar.drivers"]
 acme = "anysoar_acme:AcmeDriver"
