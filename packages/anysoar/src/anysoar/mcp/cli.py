@@ -10,14 +10,13 @@ import logging
 import os
 import sys
 import tomllib
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from pathlib import Path
 
 from pydantic import ValidationError
 
 from anysoar import __version__
-from anysoar.drivers import SoarSwitch, SwitchableDriver
-from anysoar.drivers.mock import MockDriver
+from anysoar.drivers import SoarSwitch, SwitchableDriver, available_drivers, create_driver
 from anysoar.interface import Driver
 from anysoar.policy import (
     DEFAULT_TIER_DECISIONS,
@@ -29,37 +28,9 @@ from anysoar.policy import (
     Policy,
 )
 
-__all__ = ["DRIVERS", "load_policy", "main", "state_dir"]
+__all__ = ["load_policy", "main", "state_dir"]
 
 logger = logging.getLogger("anysoar.mcp")
-
-
-def _shuffle() -> Driver:
-    from anysoar.drivers.shuffle import ShuffleDriver
-
-    return ShuffleDriver()  # configured by SHUFFLE_URL and SHUFFLE_API_KEY
-
-
-def _tines() -> Driver:
-    from anysoar.drivers.tines import TinesDriver
-
-    return TinesDriver()  # configured by TINES_URL, TINES_API_KEY and TINES_TEAM_ID
-
-
-def _thehive() -> Driver:
-    from anysoar.drivers.thehive import TheHiveDriver
-
-    return TheHiveDriver()  # configured by THEHIVE_URL, THEHIVE_API_KEY, THEHIVE_ORGANISATION
-
-
-DRIVERS: dict[str, Callable[[], Driver]] = {
-    "mock": MockDriver,
-    "shuffle": _shuffle,
-    "thehive": _thehive,
-    "tines": _tines,
-}
-"""Drivers the command can start, by name. Real SOARs are configured by environment
-variables, e.g. ``SHUFFLE_URL`` and ``SHUFFLE_API_KEY``."""
 
 
 def state_dir() -> Path:
@@ -105,8 +76,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--driver",
         default=env("ANYSOAR_DRIVER", "mock"),
-        help=f"SOAR driver to use: {', '.join(sorted(DRIVERS))} (env ANYSOAR_DRIVER; "
-        "default: %(default)s). shuffle reads SHUFFLE_URL and SHUFFLE_API_KEY, thehive "
+        help=f"SOAR driver to use: {', '.join(available_drivers())} (env ANYSOAR_DRIVER; "
+        "default: %(default)s); installed packages can add more. shuffle reads SHUFFLE_URL "
+        "and SHUFFLE_API_KEY, thehive "
         "THEHIVE_URL, THEHIVE_API_KEY and optionally THEHIVE_ORGANISATION, tines "
         "TINES_URL, TINES_API_KEY and optionally TINES_TEAM_ID. Several, "
         "comma-separated, serve whichever the --soar-switch file names (the first by default)",
@@ -162,16 +134,18 @@ def _parser() -> argparse.ArgumentParser:
 
 def _driver(args: argparse.Namespace) -> Driver:
     names = [n.strip() for n in args.driver.split(",") if n.strip()]
-    unknown = [n for n in names if n not in DRIVERS]
+    known = available_drivers()
+    unknown = [n for n in names if n not in known]
     if not names or unknown or len(set(names)) != len(names):
-        sys.exit(
-            f"anysoar-mcp: --driver must name distinct drivers from: {', '.join(sorted(DRIVERS))}"
-        )
+        sys.exit(f"anysoar-mcp: --driver must name distinct drivers from: {', '.join(known)}")
     drivers: dict[str, Driver] = {}
     for name in names:
+        spec = known[name]
+        if not spec.built_in:
+            logger.info("the %s driver comes from %s", name, spec.provider)
         try:
-            drivers[name] = DRIVERS[name]()
-        except ValueError as exc:
+            drivers[name] = create_driver(name)
+        except (ValueError, ImportError, TypeError) as exc:
             sys.exit(f"anysoar-mcp: cannot start the {name} driver: {exc}")
     if len(drivers) == 1:
         return drivers[names[0]]

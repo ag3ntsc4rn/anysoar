@@ -164,9 +164,34 @@ and deletes them afterwards.
 
 ### Packaging
 
-Drivers live in `packages/anysoar/src/anysoar/drivers/<name>/` and ship as an optional
-extra, `anysoar[<name>]`, so vendor dependencies stay out of the core install. (The mock
-driver has no dependencies, so it has no extra.) Background on
+A driver can live here or in its own package.
+
+**Here (built in).** Drivers live in `packages/anysoar/src/anysoar/drivers/<name>/` and ship
+as an optional extra, `anysoar[<name>]`, so vendor dependencies stay out of the core
+install. (The mock driver has no dependencies, so it has no extra.) The maintainers keep
+them working.
+
+**In your own package.** Publish a package (by convention `anysoar-<name>`) that depends on
+`anysoar` and declares your driver in the `anysoar.drivers` entry point group:
+
+```toml
+[project]
+name = "anysoar-acme"
+dependencies = ["anysoar>=0.6"]
+
+[project.entry-points."anysoar.drivers"]
+acme = "anysoar_acme:AcmeDriver"
+```
+
+Once it is installed, `anysoar-mcp --driver acme` starts it, and
+`anysoar.drivers.create_driver("acme")` does the same from Python. The driver is created
+with no arguments, so read settings from environment variables (e.g. `ACME_URL`,
+`ACME_API_KEY`) as the built-in drivers do. A package cannot take the name of a built-in
+driver. You release and maintain it yourself; run `DriverContract` against a real instance
+in your CI, and open an issue to have it listed in the README's driver table as
+vendor-maintained or community.
+
+Background on
 the data model: [docs/adr/0001-ocsf-data-model.md](docs/adr/0001-ocsf-data-model.md); on
 how tiers are enforced: [docs/adr/0002-policy-layer.md](docs/adr/0002-policy-layer.md).
 

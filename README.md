@@ -82,6 +82,23 @@ pip install "anysoar[tines]"    # Tines driver
 pip install "anysoar[thehive]"  # TheHive driver
 ```
 
+## Drivers
+
+| Driver | Status | Alerts | Cases | Enrichment | Playbooks | Checked against |
+|---|---|---|---|---|---|---|
+| `mock` | built in | yes | yes | yes | yes | itself (in-memory fake SOAR) |
+| `shuffle` | built in | | yes | | yes | Shuffle 2.3 ([local lab](demo/shuffle)) |
+| `tines` | built in | | yes | | yes | Tines Community Edition (playbooks); Cases from the API reference |
+| `thehive` | built in | yes | yes | yes, with Cortex | | TheHive 5.8 + Cortex 4.1 ([local lab](demo/thehive)) |
+
+Every driver passes the same contract test suite (`anysoar.testing.DriverContract`).
+**Built in** drivers ship with anysoar as extras and are maintained here. A driver can also
+live in its own package: a package that declares an `anysoar.drivers` entry point is found
+by `anysoar-mcp --driver <name>` once installed, so a SOAR vendor or anyone else can publish
+and maintain one without waiting on this repository. Such drivers are listed here as
+**vendor-maintained** or **community** once they pass the contract suite against a real
+instance. See [CONTRIBUTING.md](CONTRIBUTING.md#writing-a-driver).
+
 ## Use it from an MCP client
 
 `anysoar-mcp` runs the MCP server over stdio. Point your MCP client at it, for example with
@@ -262,6 +279,8 @@ asyncio.run(main())
 6. **Console** (done): live agent reasoning and approve/reject for gated actions.
 7. **Demo** (done): an end-to-end scenario including swapping the SOAR underneath a running
    agent.
+8. **More SOARs** (ongoing): Tines and TheHive with Cortex so far; drivers in their own
+   packages, so vendors can maintain theirs.
 
 ## Repository layout
 
