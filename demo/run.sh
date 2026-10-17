@@ -82,9 +82,10 @@ cat <<EOF
    $soar_ui
 
    1. Approve or reject the agent's actions in the console as they appear.
-   2. After a case or two, when the status above the Agent feed turns green ("Finished
-      ... A good moment to switch the SOAR"), click "$soar" next to SOAR in the console
-      header. The same agent keeps running; its next case comes from $soar. $soar_note
+   2. When the mock's cases are done and the status above the Agent feed stays green
+      ("Finished ... A good moment to switch the SOAR"), click "$soar" next to SOAR in the
+      console header. The same agent keeps running; its next case comes from $soar.
+      $soar_note
    3. Try "Stop all actions", then Resume.
 
 EOF
