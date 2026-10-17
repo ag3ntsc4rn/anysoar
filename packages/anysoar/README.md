@@ -10,7 +10,7 @@ destructive actions are blocked, everything is audited, and a kill switch stops 
 > **Status: pre-alpha.** Expect breaking changes. Source, docs and a one-command demo:
 > <https://github.com/ag3ntsc4rn/anysoar>
 
-![The anysoar console: an agent's action waiting for approval, and its reasoning as it works](https://raw.githubusercontent.com/ag3ntsc4rn/anysoar/main/docs/images/console.png)
+![The anysoar console switched to TheHive: an agent's note waiting for approval, and the agent looking indicators up as it works](https://raw.githubusercontent.com/ag3ntsc4rn/anysoar/main/docs/images/console.png)
 
 ## Install
 
