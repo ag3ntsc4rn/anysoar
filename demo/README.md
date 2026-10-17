@@ -2,7 +2,8 @@
 
 An AI agent triages phishing cases while you supervise it from the anysoar console. Halfway
 through, you switch the SOAR underneath it from a mock to a real SOAR running locally, and
-the same running agent carries on without a restart.
+the same running agent carries on without a restart. [Watch it](../docs/images/demo.mp4)
+(42 seconds, captioned).
 
 ```bash
 demo/run.sh                  # switch to TheHive; offline: a scripted agent, no API key needed
@@ -47,9 +48,10 @@ Press Ctrl-C to stop the agent; the script then stops the console. The lab keeps
 2. **Approve or reject** each action it asks for (the status line turns amber, "Waiting for
    your approval"). Add a reason; it goes into the audit log. Rejected actions never reach
    the SOAR, and the agent carries on.
-3. **Switch the SOAR.** When the status line turns green ("Finished … A good moment to
-   switch the SOAR"), click **thehive** (or **shuffle**) next to *SOAR* in the console
-   header. The agent's next case comes from that SOAR. On TheHive it looks indicators up
+3. **Switch the SOAR.** The agent goes straight from one open case to the next, so wait
+   until the mock's cases are done and the status line stays green ("Finished … A good
+   moment to switch the SOAR"), then click **thehive** (or **shuffle**) next to *SOAR* in
+   the console header. The agent's next case comes from that SOAR. On TheHive it looks indicators up
    with Cortex, about 10 seconds each; on Shuffle it has fewer tools (no alerts or
    indicator enrichment). The audit trail's *SOAR* column shows where each call went.
 4. **See it in the SOAR.** TheHive is at http://localhost:9000 (user `analyst@anysoar.lab`,

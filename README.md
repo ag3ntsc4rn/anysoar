@@ -13,6 +13,8 @@
 
 ## See it
 
+**[Watch the 42-second demo](docs/images/demo.mp4)**, or run it yourself:
+
 ```bash
 demo/run.sh
 ```
