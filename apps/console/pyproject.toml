@@ -8,7 +8,7 @@ license = "Apache-2.0"
 authors = [{ name = "ag3ntsc4rn" }]
 classifiers = ["Private :: Do Not Upload"]
 # Starlette, uvicorn and sse-starlette come with the MCP SDK; listed for clarity.
-dependencies = ["anysoar[mcp]", "starlette>=1.8", "uvicorn>=0.54", "sse-starlette>=3.5"]
+dependencies = ["anysoar[mcp]", "starlette>=1.8", "uvicorn>=0.54", "sse-starlette>=3.6.0"]
 
 [project.scripts]
 anysoar-console = "anysoar_console.cli:main"
