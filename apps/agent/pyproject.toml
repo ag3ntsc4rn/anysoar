@@ -13,7 +13,7 @@ dependencies = ["anysoar[mcp]"]
 anysoar-agent = "anysoar_agent.cli:main"
 
 [project.optional-dependencies]
-claude = ["anthropic>=1.15,<2"]
+claude = ["anthropic>=2.3.0,<3"]
 
 [tool.uv.sources]
 anysoar = { workspace = true }
