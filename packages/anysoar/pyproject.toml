@@ -22,7 +22,7 @@ classifiers = [
     "Topic :: System :: Monitoring",
     "Typing :: Typed",
 ]
-dependencies = ["pydantic>=2.14,<3"]
+dependencies = ["pydantic>=2.14.2,<3"]
 
 [project.scripts]
 anysoar-mcp = "anysoar.mcp.cli:main"
